@@ -1,0 +1,61 @@
+#pragma once
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct {
+    uint32_t bar_count;
+    uint32_t mode;             // 0: Harmonic 144-Pitch EQ & 12x12 Grid, 1: Wave Ribbon, 2: Radial Orbit, 3: Cyber Tunnel, 4: Galaxy Nebula, 5: Crystal Core
+    uint32_t color_scheme;     // 0: Cyberpunk, 1: Synthwave, 2: Fire, 3: Spectrum, 4: Matrix, 5: Neon Ice
+    float decay_rate;          // 0.5 to 0.99
+    float height_scale;        // 0.1 to 5.0
+    float rotation_speed;      // 0.0 (stationary front view)
+    float bass_pulse;          // 0.0 to 1.0 (beat pulse)
+    float cam_yaw;             // Camera yaw angle in radians (default 0.0)
+    float cam_pitch;           // Camera pitch angle in radians (default 0.20)
+    float cam_distance;        // Camera distance from target (default 18.5)
+    float cam_target_x;        // Camera look-at target X (default 0.0)
+    float cam_target_y;        // Camera look-at target Y (default 3.2)
+    float cam_target_z;        // Camera look-at target Z (default 0.0)
+    uint32_t camera_reset;     // Flag to trigger camera reset (1 = reset)
+    uint32_t base_octave;      // Active playing base octave (default 3, range 1-7)
+} NovaVisualizerConfig;
+
+typedef struct {
+    float pitch_energy[144];          // Magnitude of each of 144 pitches (0.0 to 1.0)
+    float pitch_cents[144];           // Cent deviation (-50.0 to +50.0 cents)
+    float pitchclass_dissonance[12];  // Dissonance factor (0.0 = consonant green, 1.0 = dissonant maroon)
+    float pitchclass_energy[12];      // Energy per pitch class
+    float grid_harmony[144];          // 12x12 grid cell harmony/dissonance value (0.0 to 1.0)
+    float grid_energy[144];           // 12x12 grid cell illumination energy (0.0 to 1.0)
+    float pitch_resonance[144];       // 144 pitches overtone & sympathetic resonance (White factor)
+    float grid_resonance[144];        // 12x12 grid resonance across octaves (White factor)
+    uint32_t active_keys[144];        // Active voice flags (Blue factor)
+    char key_name[32];                // e.g. "Cn"
+    char chord_name[32];              // e.g. "C Major Triad"
+    float overall_consonance;         // 0.0 to 1.0
+    float pitchgroup_probs[12];       // Probability distribution across 12 PitchGroups
+    float waveform[144];              // Actual streaming audio time-series / PCM buffer (144 samples)
+} NovaHarmonicData;
+
+typedef struct {
+    uint32_t event_type; // 0: NOTE_ON, 1: NOTE_OFF, 2: TRANSPORT_TOGGLE, 3: PANIC, 4: MODE_SET, 5: THEME_CYCLE, 6: OCTAVE_DELTA
+    uint32_t note;       // MIDI note or mode index
+    float value;         // Velocity or parameter value
+} NovaInputEvent;
+
+void* nova_visualizer_create(uint32_t width, uint32_t height, const char* title, bool headless);
+void nova_visualizer_update_spectrum(void* handle, const float* bins, uint32_t count, const NovaVisualizerConfig* config);
+void nova_visualizer_update_harmonics(void* handle, const NovaHarmonicData* data);
+bool nova_visualizer_render_frame(void* handle);
+void nova_visualizer_poll_events(void* handle, bool* should_quit);
+uint32_t nova_visualizer_get_events(void* handle, NovaInputEvent* out_events, uint32_t max_events);
+void nova_visualizer_destroy(void* handle);
+
+#ifdef __cplusplus
+}
+#endif

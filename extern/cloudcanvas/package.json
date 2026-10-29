@@ -1,0 +1,31 @@
+{
+  "name": "cloudcanvas-base",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Minimalist client-side GUI framework: blits, thin handles over DOM elements on an infinite canvas",
+  "type": "module",
+  "main": "index.js",
+  "sideEffects": [
+    "./defaults.js"
+  ],
+  "keywords": [
+    "canvas",
+    "gui",
+    "blit",
+    "dom",
+    "infinite-canvas"
+  ],
+  "author": "Richard Christopher, NeoTec, LLC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CloudsEcosys/cloudcanvas.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CloudsEcosys/cloudcanvas/issues"
+  },
+  "homepage": "https://github.com/CloudsEcosys/cloudcanvas#readme",
+  "engines": {
+    "node": ">=20"
+  }
+}

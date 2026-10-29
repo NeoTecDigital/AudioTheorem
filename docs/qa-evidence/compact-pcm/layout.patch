@@ -1,0 +1,298 @@
+diff -ru /tmp/nova-compact-pcm-before/waterfall/labels.rs src/visualizer/scene/waterfall/labels.rs
+--- /tmp/nova-compact-pcm-before/waterfall/labels.rs	2026-10-29 12:57:32.583261205 -0500
++++ src/visualizer/scene/waterfall/labels.rs	2026-10-29 15:07:42.565105797 -0500
+@@ -1,4 +1,4 @@
+-use super::{DEPTH, PCM_BASE};
++use super::{DEPTH, PCM_BASE, PCM_STRIDE, PCM_WIDTH, PCM_X};
+ use crate::contracts::{Snapshot, StreamHistory};
+ use crate::visualizer::{
+     mesh::{Mesh, CYAN, INK, MUTED},
+@@ -6,38 +6,16 @@
+ };
+ 
+ pub fn draw(mesh: &mut Mesh, state: &Snapshot, history: &StreamHistory) {
+-    let start = mesh.vertices.len();
+-    mesh.text("03 / ACTUAL PCM", -8.2, 3.45, 0.037, INK);
+-    mesh.text("L", -8.2, 2.8, 0.04, CYAN);
+-    mesh.text("R", -5.75, 2.8, 0.04, INK);
+-    let raw = history
+-        .pcm
+-        .iter()
+-        .flat_map(|r| &r.points)
+-        .all(|p| p.end - p.start == 1);
+-    mesh.text(
+-        if raw {
+-            "SIGNED SAMPLES"
+-        } else {
+-            "MIN/MAX ENVELOPES"
+-        },
+-        -7.7,
+-        3.02,
+-        0.023,
+-        MUTED,
+-    );
+-    mesh.map_since(start, |[x, y, _]| [x, y, spatial::WALL_Z]);
++    pcm_labels(mesh, history);
+     age_axis(
+         mesh,
+         state,
+         history,
+-        [-8.5, PCM_BASE - 0.9, spatial::WALL_Z],
+-    );
+-    age_axis(
+-        mesh,
+-        state,
+-        history,
+-        [8.5, spatial::BASE_Y, spatial::SHORE_Z],
++        [
++            PCM_X + PCM_STRIDE + PCM_WIDTH + 0.75,
++            PCM_BASE,
++            spatial::SHORE_Z,
++        ],
+     );
+     let start = mesh.vertices.len();
+     mesh.text(
+@@ -50,6 +28,30 @@
+     mesh.map_since(start, |[x, y, _]| [x, y, spatial::SHORE_Z + DEPTH]);
+ }
+ 
++fn pcm_labels(mesh: &mut Mesh, history: &StreamHistory) {
++    let start = mesh.vertices.len();
++    mesh.text("L", PCM_X, PCM_BASE + 0.65, 0.026, CYAN);
++    mesh.text("R", PCM_X + PCM_STRIDE, PCM_BASE + 0.65, 0.026, INK);
++    mesh.text("03 / ACTUAL PCM", PCM_X, PCM_BASE + 1.35, 0.026, INK);
++    let raw = history
++        .pcm
++        .iter()
++        .flat_map(|r| &r.points)
++        .all(|p| p.end - p.start == 1);
++    mesh.text(
++        if raw {
++            "SIGNED SAMPLES"
++        } else {
++            "MIN/MAX ENVELOPES"
++        },
++        PCM_X,
++        PCM_BASE + 1.10,
++        0.020,
++        MUTED,
++    );
++    mesh.map_since(start, |[x, y, _]| [x, y, spatial::SHORE_Z]);
++}
++
+ fn age_axis(mesh: &mut Mesh, state: &Snapshot, history: &StreamHistory, origin: [f32; 3]) {
+     let [x, y, z] = origin;
+     mesh.line(origin, [x, y, z + DEPTH], 0.012, MUTED);
+@@ -63,7 +65,7 @@
+             format!("-{age:.3}S")
+         };
+         let start = mesh.vertices.len();
+-        mesh.text(&text, x, y - 0.15, 0.028, MUTED);
++        mesh.text(&text, x, y + 0.50, 0.024, MUTED);
+         mesh.map_since(start, |[x, y, _]| [x, y, z + t as f32 * DEPTH]);
+     }
+ }
+diff -ru /tmp/nova-compact-pcm-before/waterfall/mod.rs src/visualizer/scene/waterfall/mod.rs
+--- /tmp/nova-compact-pcm-before/waterfall/mod.rs	2026-10-29 12:54:36.947826169 -0500
++++ src/visualizer/scene/waterfall/mod.rs	2026-10-29 15:03:18.450804516 -0500
+@@ -7,8 +7,12 @@
+ use crate::visualizer::mesh::Mesh;
+ 
+ pub const DEPTH: f32 = 9.0;
+-pub const PCM_BASE: f32 = 1.8;
+-pub const PCM_WIDTH: f32 = 2.15;
++// Compact stereo lanes beyond the spectrum's right edge; both histories share an age axis.
++pub const PCM_X: f32 = 8.25;
++pub const PCM_BASE: f32 = spatial::BASE_Y;
++pub const PCM_WIDTH: f32 = 0.95;
++pub const PCM_STRIDE: f32 = 1.20;
++pub const PCM_AMPLITUDE: f32 = 0.30;
+ 
+ pub fn fraction(history: &StreamHistory, sample: u64) -> Option<f32> {
+     if history.start >= history.end || sample < history.start || sample > history.end {
+@@ -20,8 +24,8 @@
+ pub fn pcm_point(row: &PcmSlice, sample: u64, channel: usize, value: f32, z: f32) -> [f32; 3] {
+     let t = (sample.saturating_sub(row.start)) as f32 / (row.end - row.start).max(1) as f32;
+     [
+-        -8.2 + channel as f32 * 2.45 + t * PCM_WIDTH,
+-        PCM_BASE + value * 0.70,
++        PCM_X + channel as f32 * PCM_STRIDE + t * PCM_WIDTH,
++        PCM_BASE + value * PCM_AMPLITUDE,
+         z,
+     ]
+ }
+@@ -37,7 +41,7 @@
+         .pcm
+         .iter()
+         .find(|r| sample >= r.start && sample < r.end)?;
+-    let z = spatial::WALL_Z + fraction(history, row.end)? * DEPTH;
++    let z = spatial::SHORE_Z + fraction(history, row.end)? * DEPTH;
+     Some(pcm_point(row, sample, 0, 0.0, z))
+ }
+ 
+diff -ru /tmp/nova-compact-pcm-before/waterfall/pcm.rs src/visualizer/scene/waterfall/pcm.rs
+--- /tmp/nova-compact-pcm-before/waterfall/pcm.rs	2026-10-29 12:54:36.947826169 -0500
++++ src/visualizer/scene/waterfall/pcm.rs	2026-10-29 15:03:18.475804423 -0500
+@@ -9,10 +9,10 @@
+     let Some(age) = fraction(history, row.end) else {
+         return;
+     };
+-    let z = spatial::WALL_Z + age * DEPTH;
++    let z = spatial::SHORE_Z + age * DEPTH;
+     for channel in 0..2 {
+         let mut color = if channel == 0 { CYAN } else { INK };
+-        color[3] = 0.8 - age * 0.5;
++        color[3] = 0.50 - age * 0.28;
+         for pair in row.points.windows(2) {
+             segment(mesh, row, [&pair[0], &pair[1]], channel, z, color);
+         }
+@@ -39,7 +39,7 @@
+         mesh.line(
+             pcm_point(row, a.start, channel, a.min[channel], z),
+             pcm_point(row, b.start, channel, b.min[channel], z),
+-            0.018,
++            0.012,
+             color,
+         );
+         return;
+@@ -56,7 +56,7 @@
+         mesh.line(
+             pcm_point(row, a.start, channel, value(a), z),
+             pcm_point(row, b.start, channel, value(b), z),
+-            0.012,
++            0.009,
+             color,
+         );
+     }
+@@ -65,14 +65,14 @@
+ fn tail(mesh: &mut Mesh, row: &PcmSlice, p: &WavePoint, channel: usize, z: f32, color: [f32; 4]) {
+     if p.end - p.start == 1 && p.min == p.max {
+         let [x, y, z] = pcm_point(row, p.start, channel, p.min[channel], z);
+-        mesh.diamond(x, y, 0.012, z, color);
++        mesh.diamond(x, y, 0.009, z, color);
+         return;
+     }
+     for value in [p.min[channel], p.max[channel]] {
+         mesh.line(
+             pcm_point(row, p.start, channel, value, z),
+             pcm_point(row, p.end, channel, value, z),
+-            0.012,
++            0.009,
+             color,
+         );
+     }
+diff -ru /tmp/nova-compact-pcm-before/waterfall/tests.rs src/visualizer/scene/waterfall/tests.rs
+--- /tmp/nova-compact-pcm-before/waterfall/tests.rs	2026-10-29 12:54:36.948826165 -0500
++++ src/visualizer/scene/waterfall/tests.rs	2026-10-29 15:07:42.624106076 -0500
+@@ -59,7 +59,11 @@
+     assert!(mesh
+         .vertices
+         .iter()
+-        .any(|v| v.position[2] == spatial::WALL_Z));
++        .any(|v| v.position[2] == spatial::SHORE_Z));
++    assert!(mesh
++        .vertices
++        .iter()
++        .all(|v| v.position[2] >= spatial::SHORE_Z));
+     let mut other = Mesh::new();
+     draw(&mut other, &state, state.analysis.as_ref().unwrap());
+     assert_eq!(mesh.vertices.len(), other.vertices.len());
+@@ -71,10 +75,74 @@
+     let history = data();
+     let mut mesh = Mesh::new();
+     pcm::row(&mut mesh, &history, &history.pcm[0]);
+-    assert!(mesh.vertices.iter().any(|v| v.position[1] < PCM_BASE - 0.5));
+-    assert!(mesh.vertices.iter().any(|v| v.position[1] > PCM_BASE + 0.6));
+-    assert!(mesh.vertices.iter().any(|v| v.position[0] < -6.0));
+-    assert!(mesh.vertices.iter().any(|v| v.position[0] > -5.0));
++    assert!(mesh
++        .vertices
++        .iter()
++        .any(|v| v.position[1] < PCM_BASE - 0.7 * PCM_AMPLITUDE));
++    assert!(mesh
++        .vertices
++        .iter()
++        .any(|v| v.position[1] > PCM_BASE + 0.8 * PCM_AMPLITUDE));
++    assert!(mesh
++        .vertices
++        .iter()
++        .any(|v| v.position[0] < PCM_X + PCM_WIDTH));
++    assert!(mesh
++        .vertices
++        .iter()
++        .any(|v| v.position[0] >= PCM_X + PCM_STRIDE));
++}
++
++#[test]
++fn compact_pcm_stays_beside_spectrum_and_shares_its_depth_clock() {
++    let mut history = data();
++    history.end = 3000;
++    let mut mesh = Mesh::new();
++    pcm::row(&mut mesh, &history, &history.pcm[0]);
++    assert!(!mesh.vertices.is_empty());
++    for vertex in &mesh.vertices {
++        let [x, y, z, _] = vertex.position;
++        assert!(
++            (8.2..10.5).contains(&x),
++            "PCM must sit outside the spectrum span"
++        );
++        assert!((spatial::BASE_Y - 0.31..spatial::BASE_Y + 0.31).contains(&y));
++        assert_eq!(z, spatial::SHORE_Z + DEPTH * 0.5);
++        assert!(vertex.color[3] <= 0.5);
++    }
++    let anchor = temporal_anchor(&history, 1500, 1501).unwrap();
++    assert_eq!(anchor[2], spatial::SHORE_Z + DEPTH * 0.5);
++    assert_eq!(anchor[1], spatial::BASE_Y);
++}
++
++#[test]
++fn default_history_layout_clears_screen_hud_in_both_modes() {
++    let mut state = super::super::fixtures::snapshot();
++    for immersive in [false, true] {
++        state.view.immersive = immersive;
++        let mut mesh = Mesh::new();
++        draw(&mut mesh, &state, state.analysis.as_ref().unwrap());
++        let transform = crate::visualizer::camera::Camera.matrix(&state.view, 1920, 1080);
++        assert_clear_of_hud(&mesh, transform);
++    }
++}
++
++fn assert_clear_of_hud(mesh: &Mesh, transform: [f32; 16]) {
++    for vertex in &mesh.vertices {
++        let p: [f32; 4] = std::array::from_fn(|row| {
++            (0..4)
++                .map(|col| transform[col * 4 + row] * vertex.position[col])
++                .sum()
++        });
++        assert!(p[3] > 0.0);
++        assert!((p[0] / p[3]).abs() < 0.98);
++        assert!(
++            (-0.70..0.67).contains(&(p[1] / p[3])),
++            "history must clear the HUD: {:?} projects to {}",
++            vertex.position,
++            p[1] / p[3]
++        );
++    }
+ }
+ 
+ #[test]
+@@ -88,7 +156,7 @@
+         row,
+         [&row.points[0], &row.points[1]],
+         0,
+-        spatial::WALL_Z,
++        spatial::SHORE_Z,
+         [1.0; 4],
+     );
+     assert!(mesh.vertices.is_empty());
+@@ -105,8 +173,8 @@
+     assert!(temporal_anchor(&history, 800, 999).is_none());
+     assert!(temporal_anchor(&history, 2000, 2200).is_none());
+     let p = temporal_anchor(&history, 1500, 1501).unwrap();
+-    assert!((p[0] - (-8.2 + PCM_WIDTH * 0.5)).abs() < 1e-5);
+-    assert_eq!(p[2], spatial::WALL_Z);
++    assert!((p[0] - (PCM_X + PCM_WIDTH * 0.5)).abs() < 1e-5);
++    assert_eq!(p[2], spatial::SHORE_Z);
+ }
+ 
+ #[test]

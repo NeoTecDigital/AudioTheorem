@@ -1,0 +1,25 @@
+//! Versioned, deterministic heuristic parameters; these are not probabilities.
+pub const MODEL_VERSION: u32 = 1;
+pub const WINDOWS: [usize; 3] = [2048, 8192, 32768];
+pub const FFT_HOPS: [u64; 3] = [1024, 2048, 8192];
+pub const HISTORY_SECONDS: usize = 30;
+pub const CONTRIBUTION_LIMIT: usize = 384;
+pub const SPECTRAL_LINKS: usize = 48;
+pub const GROUP_EXPONENT: i32 = 4;
+pub const ROOT_WEIGHTS: [f32; 4] = [0.45, 0.25, 0.20, 0.10];
+pub const ROOT_MEMORY_SECONDS: f32 = 12.0;
+pub const CONTEXT_SECONDS: f32 = 4.0;
+pub const FAST_SECONDS: f32 = 0.120;
+pub const RESOLUTION_DROP: f32 = 0.15;
+pub const PEAK_MINIMUM: f32 = 0.25;
+pub const RESOLUTION_SECONDS: f32 = 3.0;
+pub const SETTLE_SECONDS: f32 = 0.5;
+pub const CONTEXT_CONFIDENCE: f32 = 0.04;
+pub const DESTINATION_SUPPORT: f32 = 0.15;
+pub const SILENCE_POWER: f32 = 1e-10;
+pub const MAX_CADENCES: usize = 64;
+pub const BASS_HZ: f32 = 250.0;
+pub const CONTEXT_WARMUP_SECONDS: f32 = 0.5;
+pub const LOW_CROSSOVER: [f32; 2] = [180.0, 320.0];
+pub const HIGH_CROSSOVER: [f32; 2] = [1600.0, 2400.0];
+pub const MAX_HARMONIC: u32 = 16;

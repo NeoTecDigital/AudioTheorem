@@ -1,0 +1,2436 @@
+#include "nova_visualizer.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_vulkan.h>
+#include <vulkan/vulkan.h>
+
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <vector>
+#include <array>
+#include <set>
+#include <mutex>
+#include <cmath>
+#include <chrono>
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <algorithm>
+
+struct VizVertex {
+    glm::vec3 pos;
+    glm::vec3 color;
+    glm::vec3 normal;
+
+    static VkVertexInputBindingDescription getBindingDescription() {
+        VkVertexInputBindingDescription b = {};
+        b.binding = 0;
+        b.stride = sizeof(VizVertex);
+        b.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        return b;
+    }
+
+    static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 3> a = {};
+        a[0].binding = 0;
+        a[0].location = 0;
+        a[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+        a[0].offset = offsetof(VizVertex, pos);
+
+        a[1].binding = 0;
+        a[1].location = 1;
+        a[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        a[1].offset = offsetof(VizVertex, color);
+
+        a[2].binding = 0;
+        a[2].location = 2;
+        a[2].format = VK_FORMAT_R32G32B32_SFLOAT;
+        a[2].offset = offsetof(VizVertex, normal);
+        return a;
+    }
+};
+
+struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+    glm::vec4 params; // x: time, y: bass_pulse, z: mode, w: theme
+};
+
+struct QueueFamilyIndices {
+    int graphicsFamily = -1;
+    int presentFamily = -1;
+    bool isComplete() { return graphicsFamily >= 0 && presentFamily >= 0; }
+};
+
+struct SwapChainSupportDetails {
+    VkSurfaceCapabilitiesKHR capabilities;
+    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<VkPresentModeKHR> presentModes;
+};
+
+class VulkanVisualizerApp {
+public:
+    uint32_t width;
+    uint32_t height;
+    std::string title;
+    bool headless;
+    bool is_initialized;
+    bool should_close;
+
+    SDL_Window* window = nullptr;
+    VkInstance instance = VK_NULL_HANDLE;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice device = VK_NULL_HANDLE;
+    VkQueue graphicsQueue = VK_NULL_HANDLE;
+    VkQueue presentQueue = VK_NULL_HANDLE;
+
+    VkSwapchainKHR swapChain = VK_NULL_HANDLE;
+    std::vector<VkImage> swapChainImages;
+    VkFormat swapChainImageFormat;
+    VkExtent2D swapChainExtent;
+    std::vector<VkImageView> swapChainImageViews;
+    std::vector<VkFramebuffer> swapChainFramebuffers;
+
+    VkRenderPass renderPass = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkPipeline graphicsPipeline = VK_NULL_HANDLE;
+
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    std::vector<VkCommandBuffer> commandBuffers;
+
+    // Dynamic Vertex & Index Buffers
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer indexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+    uint32_t indexCount = 0;
+    size_t maxVertices = 65536;
+    size_t maxIndices = 196608;
+
+    // Depth buffer
+    VkImage depthImage = VK_NULL_HANDLE;
+    VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
+    VkImageView depthImageView = VK_NULL_HANDLE;
+
+    // Uniform Buffers
+    std::vector<VkBuffer> uniformBuffers;
+    std::vector<VkDeviceMemory> uniformBuffersMemory;
+    std::vector<void*> uniformBuffersMapped;
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSet> descriptorSets;
+
+    // Synchronization
+    static const int MAX_FRAMES_IN_FLIGHT = 2;
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkFence> inFlightFences;
+    uint32_t currentFrame = 0;
+
+    // State & spectrum
+    std::mutex data_mutex;
+    std::vector<float> bins;
+    std::vector<float> smoothed_bins;
+    NovaVisualizerConfig viz_config;
+    NovaHarmonicData harmonic_data = {};
+
+    // Input events & HUD interactive state
+    std::mutex event_mutex;
+    std::vector<NovaInputEvent> input_events;
+    int base_octave = 3;
+    bool show_hud = true;
+    std::array<bool, 128> active_keys = {false};
+    bool mouse_down = false;
+    bool mouse_panning = false;
+    int last_mouse_x = 0;
+    int last_mouse_y = 0;
+    float cam_yaw = 0.0f;
+    float cam_pitch = 0.20f;
+    float cam_distance = 18.5f;
+    float cam_target_x = 0.0f;
+    float cam_target_y = 3.2f;
+    float cam_target_z = 0.0f;
+    int mouse_held_note = -1;
+    uint32_t title_frame_counter = 0;
+    int current_cam_preset = 0;
+
+    float current_rotation = 0.0f;
+    std::chrono::high_resolution_clock::time_point startTime;
+
+    VulkanVisualizerApp(uint32_t w, uint32_t h, const char* t, bool hl)
+        : width(w), height(h), title(t ? t : "Nova 3D Vulkan Frequency Visualizer"),
+          headless(hl), is_initialized(false), should_close(false)
+    {
+        viz_config.bar_count = 144;
+        viz_config.mode = 0;
+        viz_config.color_scheme = 0;
+        viz_config.decay_rate = 0.88f;
+        viz_config.height_scale = 1.0f;
+        viz_config.rotation_speed = 0.0f; // Stationary by default, no camera spinning
+        viz_config.bass_pulse = 0.0f;
+        viz_config.cam_yaw = 0.0f;
+        viz_config.cam_pitch = 0.20f;
+        viz_config.cam_distance = 18.5f;
+        viz_config.cam_target_x = 0.0f;
+        viz_config.cam_target_y = 3.2f;
+        viz_config.cam_target_z = 0.0f;
+        viz_config.camera_reset = 0;
+
+        bins.resize(144, 0.0f);
+        smoothed_bins.resize(144, 0.0f);
+        startTime = std::chrono::high_resolution_clock::now();
+
+        init();
+    }
+
+    ~VulkanVisualizerApp() {
+        cleanup();
+    }
+
+    void init() {
+        if (headless) {
+            std::cout << "[NovaVisualizer] Running in headless mode." << std::endl;
+            is_initialized = true;
+            return;
+        }
+
+        if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+            std::cerr << "[NovaVisualizer] SDL_Init failed: " << SDL_GetError() << ". Falling back to headless." << std::endl;
+            headless = true;
+            is_initialized = true;
+            return;
+        }
+
+        window = SDL_CreateWindow(
+            title.c_str(),
+            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+            width, height,
+            SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
+        );
+
+        if (!window) {
+            std::cerr << "[NovaVisualizer] Failed to create SDL window: " << SDL_GetError() << ". Falling back to headless." << std::endl;
+            headless = true;
+            is_initialized = true;
+            return;
+        }
+
+        try {
+            createInstance();
+            createSurface();
+            pickPhysicalDevice();
+            createLogicalDevice();
+            createSwapChain();
+            createImageViews();
+            createRenderPass();
+            createDescriptorSetLayout();
+            createGraphicsPipeline();
+            createCommandPool();
+            createDepthResources();
+            createFramebuffers();
+            createBuffers();
+            createUniformBuffers();
+            createDescriptorPool();
+            createDescriptorSets();
+            createCommandBuffers();
+            createSyncObjects();
+
+            is_initialized = true;
+            std::cout << "[NovaVisualizer] 3D Vulkan Visualizer initialized and active (" << width << "x" << height << ")." << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[NovaVisualizer] Vulkan initialization exception: " << e.what() << ". Falling back to headless." << std::endl;
+            headless = true;
+            is_initialized = true;
+        }
+    }
+
+    void createInstance() {
+        uint32_t extensionCount = 0;
+        SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, nullptr);
+        std::vector<const char*> extensions(extensionCount);
+        SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensions.data());
+
+        VkApplicationInfo appInfo = {};
+        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+        appInfo.pApplicationName = "Nova 3D Visualizer";
+        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+        appInfo.pEngineName = "Nova";
+        appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+        appInfo.apiVersion = VK_API_VERSION_1_2;
+
+        VkInstanceCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        createInfo.pApplicationInfo = &appInfo;
+        createInfo.enabledExtensionCount = extensionCount;
+        createInfo.ppEnabledExtensionNames = extensions.data();
+
+        if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create Vulkan instance");
+        }
+    }
+
+    void createSurface() {
+        if (!SDL_Vulkan_CreateSurface(window, instance, &surface)) {
+            throw std::runtime_error("failed to create window surface");
+        }
+    }
+
+    void pickPhysicalDevice() {
+        uint32_t deviceCount = 0;
+        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+        if (deviceCount == 0) throw std::runtime_error("no Vulkan devices found");
+        std::vector<VkPhysicalDevice> devices(deviceCount);
+        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+        for (const auto& dev : devices) {
+            QueueFamilyIndices indices = findQueueFamilies(dev);
+            if (indices.isComplete()) {
+                physicalDevice = dev;
+                break;
+            }
+        }
+        if (physicalDevice == VK_NULL_HANDLE) {
+            throw std::runtime_error("failed to find suitable physical device");
+        }
+    }
+
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice dev) {
+        QueueFamilyIndices indices;
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(dev, &queueFamilyCount, nullptr);
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(dev, &queueFamilyCount, queueFamilies.data());
+
+        int i = 0;
+        for (const auto& qf : queueFamilies) {
+            if (qf.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                indices.graphicsFamily = i;
+            }
+            VkBool32 presentSupport = false;
+            vkGetPhysicalDeviceSurfaceSupportKHR(dev, i, surface, &presentSupport);
+            if (presentSupport) {
+                indices.presentFamily = i;
+            }
+            if (indices.isComplete()) break;
+            i++;
+        }
+        return indices;
+    }
+
+    void createLogicalDevice() {
+        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+        std::set<int> uniqueQueueFamilies = { indices.graphicsFamily, indices.presentFamily };
+
+        float queuePriority = 1.0f;
+        for (int queueFamily : uniqueQueueFamilies) {
+            VkDeviceQueueCreateInfo qci = {};
+            qci.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            qci.queueFamilyIndex = queueFamily;
+            qci.queueCount = 1;
+            qci.pQueuePriorities = &queuePriority;
+            queueCreateInfos.push_back(qci);
+        }
+
+        VkPhysicalDeviceFeatures deviceFeatures = {};
+        VkDeviceCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+        createInfo.pQueueCreateInfos = queueCreateInfos.data();
+        createInfo.pEnabledFeatures = &deviceFeatures;
+
+        const std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+        createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+        createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+
+        if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create logical device");
+        }
+
+        vkGetDeviceQueue(device, indices.graphicsFamily, 0, &graphicsQueue);
+        vkGetDeviceQueue(device, indices.presentFamily, 0, &presentQueue);
+    }
+
+    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice dev) {
+        SwapChainSupportDetails details;
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(dev, surface, &details.capabilities);
+        uint32_t formatCount;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(dev, surface, &formatCount, nullptr);
+        if (formatCount != 0) {
+            details.formats.resize(formatCount);
+            vkGetPhysicalDeviceSurfaceFormatsKHR(dev, surface, &formatCount, details.formats.data());
+        }
+        uint32_t presentModeCount;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(dev, surface, &presentModeCount, nullptr);
+        if (presentModeCount != 0) {
+            details.presentModes.resize(presentModeCount);
+            vkGetPhysicalDeviceSurfacePresentModesKHR(dev, surface, &presentModeCount, details.presentModes.data());
+        }
+        return details;
+    }
+
+    void createSwapChain() {
+        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+        VkSurfaceFormatKHR surfaceFormat = swapChainSupport.formats[0];
+        for (const auto& f : swapChainSupport.formats) {
+            if (f.format == VK_FORMAT_B8G8R8A8_UNORM || f.format == VK_FORMAT_B8G8R8A8_SRGB) {
+                surfaceFormat = f;
+                break;
+            }
+        }
+
+        VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR; // VSync
+        for (const auto& pm : swapChainSupport.presentModes) {
+            if (pm == VK_PRESENT_MODE_MAILBOX_KHR) {
+                presentMode = pm;
+                break;
+            }
+        }
+
+        int w, h;
+        SDL_Vulkan_GetDrawableSize(window, &w, &h);
+        VkExtent2D extent = { static_cast<uint32_t>(w), static_cast<uint32_t>(h) };
+        extent.width = std::clamp(extent.width, swapChainSupport.capabilities.minImageExtent.width, swapChainSupport.capabilities.maxImageExtent.width);
+        extent.height = std::clamp(extent.height, swapChainSupport.capabilities.minImageExtent.height, swapChainSupport.capabilities.maxImageExtent.height);
+
+        uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+        if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
+            imageCount = swapChainSupport.capabilities.maxImageCount;
+        }
+
+        VkSwapchainCreateInfoKHR createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+        createInfo.surface = surface;
+        createInfo.minImageCount = imageCount;
+        createInfo.imageFormat = surfaceFormat.format;
+        createInfo.imageColorSpace = surfaceFormat.colorSpace;
+        createInfo.imageExtent = extent;
+        createInfo.imageArrayLayers = 1;
+        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+        uint32_t queueFamilyIndices[] = { static_cast<uint32_t>(indices.graphicsFamily), static_cast<uint32_t>(indices.presentFamily) };
+
+        if (indices.graphicsFamily != indices.presentFamily) {
+            createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+            createInfo.queueFamilyIndexCount = 2;
+            createInfo.pQueueFamilyIndices = queueFamilyIndices;
+        } else {
+            createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        }
+
+        createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
+        createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+        createInfo.presentMode = presentMode;
+        createInfo.clipped = VK_TRUE;
+
+        if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create swap chain");
+        }
+
+        vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+        swapChainImages.resize(imageCount);
+        vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
+
+        swapChainImageFormat = surfaceFormat.format;
+        swapChainExtent = extent;
+    }
+
+    void createImageViews() {
+        swapChainImageViews.resize(swapChainImages.size());
+        for (size_t i = 0; i < swapChainImages.size(); i++) {
+            VkImageViewCreateInfo createInfo = {};
+            createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            createInfo.image = swapChainImages[i];
+            createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            createInfo.format = swapChainImageFormat;
+            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+            createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            createInfo.subresourceRange.baseMipLevel = 0;
+            createInfo.subresourceRange.levelCount = 1;
+            createInfo.subresourceRange.baseArrayLayer = 0;
+            createInfo.subresourceRange.layerCount = 1;
+
+            if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create image views");
+            }
+        }
+    }
+
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+        for (VkFormat format : candidates) {
+            VkFormatProperties props;
+            vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+            if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+                return format;
+            } else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+                return format;
+            }
+        }
+        return VK_FORMAT_D32_SFLOAT;
+    }
+
+    VkFormat findDepthFormat() {
+        return findSupportedFormat(
+            { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+        );
+    }
+
+    void createRenderPass() {
+        VkAttachmentDescription colorAttachment = {};
+        colorAttachment.format = swapChainImageFormat;
+        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        VkAttachmentDescription depthAttachment = {};
+        depthAttachment.format = findDepthFormat();
+        depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference colorAttachmentRef = {};
+        colorAttachmentRef.attachment = 0;
+        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentReference depthAttachmentRef = {};
+        depthAttachmentRef.attachment = 1;
+        depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkSubpassDescription subpass = {};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &colorAttachmentRef;
+        subpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+        VkSubpassDependency dependency = {};
+        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass = 0;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.srcAccessMask = 0;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        std::array<VkAttachmentDescription, 2> attachments = { colorAttachment, depthAttachment };
+        VkRenderPassCreateInfo renderPassInfo = {};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        renderPassInfo.pAttachments = attachments.data();
+        renderPassInfo.subpassCount = 1;
+        renderPassInfo.pSubpasses = &subpass;
+        renderPassInfo.dependencyCount = 1;
+        renderPassInfo.pDependencies = &dependency;
+
+        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create render pass");
+        }
+    }
+
+    void createDescriptorSetLayout() {
+        VkDescriptorSetLayoutBinding uboLayoutBinding = {};
+        uboLayoutBinding.binding = 0;
+        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboLayoutBinding.descriptorCount = 1;
+        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &uboLayoutBinding;
+
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor set layout");
+        }
+    }
+
+    std::vector<char> readFile(const std::string& filename) {
+        std::vector<std::string> candidates = {
+            filename,
+            std::string("nova_bridge/shaders/") + (filename.find_last_of("/\\") != std::string::npos ? filename.substr(filename.find_last_of("/\\") + 1) : filename),
+            std::string("/home/persist/Auto/nova_bridge/shaders/") + (filename.find_last_of("/\\") != std::string::npos ? filename.substr(filename.find_last_of("/\\") + 1) : filename),
+            std::string("shaders/") + (filename.find_last_of("/\\") != std::string::npos ? filename.substr(filename.find_last_of("/\\") + 1) : filename)
+        };
+
+        for (const auto& path : candidates) {
+            std::ifstream file(path, std::ios::ate | std::ios::binary);
+            if (file.is_open()) {
+                size_t fileSize = (size_t)file.tellg();
+                std::vector<char> buffer(fileSize);
+                file.seekg(0);
+                file.read(buffer.data(), fileSize);
+                return buffer;
+            }
+        }
+        throw std::runtime_error("failed to open shader file (checked multiple paths): " + filename);
+    }
+
+    VkShaderModule createShaderModule(const std::vector<char>& code) {
+        VkShaderModuleCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        createInfo.codeSize = code.size();
+        createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+        VkShaderModule shaderModule;
+        if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create shader module");
+        }
+        return shaderModule;
+    }
+
+    void createGraphicsPipeline() {
+        auto vertShaderCode = readFile("/home/persist/Auto/nova_bridge/shaders/viz_vert.spv");
+        auto fragShaderCode = readFile("/home/persist/Auto/nova_bridge/shaders/viz_frag.spv");
+
+        VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+        VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+        VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
+        vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vertShaderStageInfo.module = vertShaderModule;
+        vertShaderStageInfo.pName = "main";
+
+        VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
+        fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragShaderStageInfo.module = fragShaderModule;
+        fragShaderStageInfo.pName = "main";
+
+        VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+
+        auto bindingDescription = VizVertex::getBindingDescription();
+        auto attributeDescriptions = VizVertex::getAttributeDescriptions();
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+        vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
+        inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+        VkPipelineViewportStateCreateInfo viewportState = {};
+        viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportState.viewportCount = 1;
+        viewportState.scissorCount = 1;
+
+        VkPipelineRasterizationStateCreateInfo rasterizer = {};
+        rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterizer.depthClampEnable = VK_FALSE;
+        rasterizer.rasterizerDiscardEnable = VK_FALSE;
+        rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterizer.lineWidth = 1.0f;
+        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+        rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rasterizer.depthBiasEnable = VK_FALSE;
+
+        VkPipelineMultisampleStateCreateInfo multisampling = {};
+        multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisampling.sampleShadingEnable = VK_FALSE;
+        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkPipelineDepthStencilStateCreateInfo depthStencil = {};
+        depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        depthStencil.depthTestEnable = VK_TRUE;
+        depthStencil.depthWriteEnable = VK_TRUE;
+        depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+        depthStencil.depthBoundsTestEnable = VK_FALSE;
+        depthStencil.stencilTestEnable = VK_FALSE;
+
+        VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_FALSE;
+
+        VkPipelineColorBlendStateCreateInfo colorBlending = {};
+        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlending.logicOpEnable = VK_FALSE;
+        colorBlending.attachmentCount = 1;
+        colorBlending.pAttachments = &colorBlendAttachment;
+
+        std::vector<VkDynamicState> dynamicStates = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+        VkPipelineDynamicStateCreateInfo dynamicState = {};
+        dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+        dynamicState.pDynamicStates = dynamicStates.data();
+
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.setLayoutCount = 1;
+        pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+
+        if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create pipeline layout");
+        }
+
+        VkGraphicsPipelineCreateInfo pipelineInfo = {};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount = 2;
+        pipelineInfo.pStages = shaderStages;
+        pipelineInfo.pVertexInputState = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState = &viewportState;
+        pipelineInfo.pRasterizationState = &rasterizer;
+        pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pDepthStencilState = &depthStencil;
+        pipelineInfo.pColorBlendState = &colorBlending;
+        pipelineInfo.pDynamicState = &dynamicState;
+        pipelineInfo.layout = pipelineLayout;
+        pipelineInfo.renderPass = renderPass;
+        pipelineInfo.subpass = 0;
+
+        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create graphics pipeline");
+        }
+
+        vkDestroyShaderModule(device, fragShaderModule, nullptr);
+        vkDestroyShaderModule(device, vertShaderModule, nullptr);
+    }
+
+    void createCommandPool() {
+        QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+        VkCommandPoolCreateInfo poolInfo = {};
+        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily;
+
+        if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create command pool");
+        }
+    }
+
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+                return i;
+            }
+        }
+        throw std::runtime_error("failed to find suitable memory type");
+    }
+
+    void createDepthResources() {
+        VkFormat depthFormat = findDepthFormat();
+
+        VkImageCreateInfo imageInfo = {};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.extent.width = swapChainExtent.width;
+        imageInfo.extent.height = swapChainExtent.height;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.format = depthFormat;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        if (vkCreateImage(device, &imageInfo, nullptr, &depthImage) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create depth image");
+        }
+
+        VkMemoryRequirements memRequirements;
+        vkGetImageMemoryRequirements(device, depthImage, &memRequirements);
+        VkMemoryAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &depthImageMemory) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate depth image memory");
+        }
+        vkBindImageMemory(device, depthImage, depthImageMemory, 0);
+
+        VkImageViewCreateInfo viewInfo = {};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = depthImage;
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = depthFormat;
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 1;
+
+        if (vkCreateImageView(device, &viewInfo, nullptr, &depthImageView) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create depth image view");
+        }
+    }
+
+    void createFramebuffers() {
+        swapChainFramebuffers.resize(swapChainImageViews.size());
+        for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+            std::array<VkImageView, 2> attachments = { swapChainImageViews[i], depthImageView };
+            VkFramebufferCreateInfo framebufferInfo = {};
+            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+            framebufferInfo.renderPass = renderPass;
+            framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+            framebufferInfo.pAttachments = attachments.data();
+            framebufferInfo.width = swapChainExtent.width;
+            framebufferInfo.height = swapChainExtent.height;
+            framebufferInfo.layers = 1;
+
+            if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create framebuffer");
+            }
+        }
+    }
+
+    void cleanupSwapChain() {
+        for (auto fb : swapChainFramebuffers) {
+            if (fb != VK_NULL_HANDLE) {
+                vkDestroyFramebuffer(device, fb, nullptr);
+            }
+        }
+        swapChainFramebuffers.clear();
+
+        if (depthImageView != VK_NULL_HANDLE) {
+            vkDestroyImageView(device, depthImageView, nullptr);
+            depthImageView = VK_NULL_HANDLE;
+        }
+        if (depthImage != VK_NULL_HANDLE) {
+            vkDestroyImage(device, depthImage, nullptr);
+            depthImage = VK_NULL_HANDLE;
+        }
+        if (depthImageMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(device, depthImageMemory, nullptr);
+            depthImageMemory = VK_NULL_HANDLE;
+        }
+
+        for (auto iv : swapChainImageViews) {
+            if (iv != VK_NULL_HANDLE) {
+                vkDestroyImageView(device, iv, nullptr);
+            }
+        }
+        swapChainImageViews.clear();
+
+        if (swapChain != VK_NULL_HANDLE) {
+            vkDestroySwapchainKHR(device, swapChain, nullptr);
+            swapChain = VK_NULL_HANDLE;
+        }
+    }
+
+    void recreateSwapChain() {
+        if (headless || !window) return;
+        int w = 0, h = 0;
+        SDL_Vulkan_GetDrawableSize(window, &w, &h);
+        while (w == 0 || h == 0) {
+            SDL_Vulkan_GetDrawableSize(window, &w, &h);
+            SDL_PumpEvents();
+            SDL_Delay(16);
+        }
+
+        vkDeviceWaitIdle(device);
+
+        cleanupSwapChain();
+
+        createSwapChain();
+        createImageViews();
+        createDepthResources();
+        createFramebuffers();
+
+        width = static_cast<uint32_t>(w);
+        height = static_cast<uint32_t>(h);
+    }
+
+    void createBuffers() {
+        VkDeviceSize vBufferSize = sizeof(VizVertex) * maxVertices;
+        createBuffer(vBufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vertexBuffer, vertexBufferMemory);
+
+        VkDeviceSize iBufferSize = sizeof(uint32_t) * maxIndices;
+        createBuffer(iBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, indexBuffer, indexBufferMemory);
+    }
+
+    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buf, VkDeviceMemory& mem) {
+        VkBufferCreateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = size;
+        bufferInfo.usage = usage;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        if (vkCreateBuffer(device, &bufferInfo, nullptr, &buf) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create buffer");
+        }
+
+        VkMemoryRequirements memRequirements;
+        vkGetBufferMemoryRequirements(device, buf, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &mem) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate buffer memory");
+        }
+        vkBindBufferMemory(device, buf, mem, 0);
+    }
+
+    void createUniformBuffers() {
+        VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+        uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+        uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
+            vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+        }
+    }
+
+    void createDescriptorPool() {
+        VkDescriptorPoolSize poolSize = {};
+        poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+        VkDescriptorPoolCreateInfo poolInfo = {};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &poolSize;
+        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+        if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor pool");
+        }
+    }
+
+    void createDescriptorSets() {
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+        VkDescriptorSetAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool;
+        allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        allocInfo.pSetLayouts = layouts.data();
+
+        descriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+        if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate descriptor sets");
+        }
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            VkDescriptorBufferInfo bufferInfo = {};
+            bufferInfo.buffer = uniformBuffers[i];
+            bufferInfo.offset = 0;
+            bufferInfo.range = sizeof(UniformBufferObject);
+
+            VkWriteDescriptorSet descriptorWrite = {};
+            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrite.dstSet = descriptorSets[i];
+            descriptorWrite.dstBinding = 0;
+            descriptorWrite.dstArrayElement = 0;
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrite.descriptorCount = 1;
+            descriptorWrite.pBufferInfo = &bufferInfo;
+
+            vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+        }
+    }
+
+    void createCommandBuffers() {
+        commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        VkCommandBufferAllocateInfo allocInfo = {};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = commandPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
+
+        if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate command buffers");
+        }
+    }
+
+    void createSyncObjects() {
+        imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+
+        VkSemaphoreCreateInfo semaphoreInfo = {};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+        VkFenceCreateInfo fenceInfo = {};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+                vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+                vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create sync objects");
+            }
+        }
+    }
+
+    uint32_t getEvents(NovaInputEvent* out_events, uint32_t max_events) {
+        std::lock_guard<std::mutex> lock(event_mutex);
+        uint32_t count = std::min((uint32_t)input_events.size(), max_events);
+        for (uint32_t i = 0; i < count; i++) {
+            out_events[i] = input_events[i];
+        }
+        input_events.erase(input_events.begin(), input_events.begin() + count);
+        return count;
+    }
+
+    void pushEvent(uint32_t type, uint32_t note, float val) {
+        std::lock_guard<std::mutex> lock(event_mutex);
+        input_events.push_back({ type, note, val });
+    }
+
+    void pushCameraUpdateEvents() {
+        // Event 7: CAM_UPDATE_ORBIT (yaw * 1000, pitch)
+        uint32_t yaw_enc = (uint32_t)(int32_t)std::round(cam_yaw * 1000.0f);
+        pushEvent(7, yaw_enc, cam_pitch);
+        // Event 9: CAM_UPDATE_TARGET (target_x * 1000, target_y)
+        uint32_t tx_enc = (uint32_t)(int32_t)std::round(cam_target_x * 1000.0f);
+        pushEvent(9, tx_enc, cam_target_y);
+        // Event 10: CAM_UPDATE_ZOOM (cam_distance)
+        pushEvent(10, 0, cam_distance);
+    }
+
+    void setCameraPreset(int preset) {
+        switch (preset % 4) {
+            case 0: // Front View (Default overview of EQ & Grid)
+                cam_yaw = 0.0f;
+                cam_pitch = 0.20f;
+                cam_distance = 18.5f;
+                cam_target_x = 0.0f;
+                cam_target_y = 3.2f;
+                cam_target_z = 0.0f;
+                break;
+            case 1: // Top Overview (High-angle perspective of entire floor and matrix)
+                cam_yaw = 0.0f;
+                cam_pitch = 0.85f;
+                cam_distance = 22.0f;
+                cam_target_x = 0.0f;
+                cam_target_y = 3.2f;
+                cam_target_z = 0.0f;
+                break;
+            case 2: // 144-EQ Focus (Close-up of horizontal 144-pitch equalizer bar)
+                cam_yaw = 0.0f;
+                cam_pitch = 0.12f;
+                cam_distance = 11.5f;
+                cam_target_x = 0.0f;
+                cam_target_y = 1.0f;
+                cam_target_z = 0.0f;
+                break;
+            case 3: // 12x12 Matrix Focus (Close-up of overtone ladder background grid)
+                cam_yaw = 0.0f;
+                cam_pitch = 0.05f;
+                cam_distance = 13.5f;
+                cam_target_x = 0.0f;
+                cam_target_y = 5.2f;
+                cam_target_z = 0.0f;
+                break;
+        }
+        pushCameraUpdateEvents();
+    }
+
+    int sdlKeyToMidi(SDL_Keycode sym, int baseOctave) {
+        int lowerBase = (baseOctave + 1) * 12; // Octave 3 -> 48 (C3)
+        int upperBase = lowerBase + 12;        // Octave 4 -> 60 (C4)
+        switch (sym) {
+            // Lower octave: zsxdcvgbhnjm
+            case SDLK_z: return lowerBase + 0;  // C
+            case SDLK_s: return lowerBase + 1;  // C#
+            case SDLK_x: return lowerBase + 2;  // D
+            case SDLK_d: return lowerBase + 3;  // D#
+            case SDLK_c: return lowerBase + 4;  // E
+            case SDLK_v: return lowerBase + 5;  // F
+            case SDLK_g: return lowerBase + 6;  // F#
+            case SDLK_b: return lowerBase + 7;  // G
+            case SDLK_h: return lowerBase + 8;  // G#
+            case SDLK_n: return lowerBase + 9;  // A
+            case SDLK_j: return lowerBase + 10; // A#
+            case SDLK_m: return lowerBase + 11; // B
+
+            // Upper octave: q2w3er5t6y7ui
+            case SDLK_q: return upperBase + 0;  // C
+            case SDLK_2: return upperBase + 1;  // C#
+            case SDLK_w: return upperBase + 2;  // D
+            case SDLK_3: return upperBase + 3;  // D#
+            case SDLK_e: return upperBase + 4;  // E
+            case SDLK_r: return upperBase + 5;  // F
+            case SDLK_5: return upperBase + 6;  // F#
+            case SDLK_t: return upperBase + 7;  // G
+            case SDLK_6: return upperBase + 8;  // G#
+            case SDLK_y: return upperBase + 9;  // A
+            case SDLK_7: return upperBase + 10; // A#
+            case SDLK_u: return upperBase + 11; // B
+            case SDLK_i: return upperBase + 12; // C5
+
+            default: return -1;
+        }
+    }
+
+    const char* getThemeName(uint32_t scheme) {
+        switch (scheme % 6) {
+            case 0: return "CYBERPUNK";
+            case 1: return "SYNTHWAVE";
+            case 2: return "FIRE INFERNO";
+            case 3: return "SPECTRUM RAINBOW";
+            case 4: return "MATRIX DIGITAL";
+            case 5: return "NEON ICE";
+            default: return "CYBERPUNK";
+        }
+    }
+
+    const char* getModeName(uint32_t mode) {
+        switch (mode % 6) {
+            case 0: return "HARMONIC 144-EQ & 12x12 GRID";
+            case 1: return "WAVE RIBBON";
+            case 2: return "RADIAL RING";
+            case 3: return "CYBER TUNNEL";
+            case 4: return "GALAXY SWARM";
+            case 5: return "CRYSTAL CORE";
+            default: return "HARMONIC 144-EQ & 12x12 GRID";
+        }
+    }
+
+    inline bool isAccidental(uint32_t pc) {
+        uint32_t c = pc % 12;
+        return c == 1 || c == 3 || c == 6 || c == 8 || c == 10;
+    }
+
+    glm::vec3 getHarmonicColor(float diss, float energy, float is_active = 0.0f, float resonance = 0.0f, bool is_accidental = false, bool has_active_sound = false) {
+        diss = std::clamp(diss, 0.0f, 1.0f);
+        energy = std::clamp(energy, 0.0f, 1.0f);
+        is_active = std::clamp(is_active, 0.0f, 1.0f);
+        resonance = std::clamp(resonance, 0.0f, 1.0f);
+
+        // 0. Idle resting baseline (no active notes/sound in the system):
+        // Clean resting keyboard darkness - no default keys or artificial dissonance colors!
+        // Black keys (accidentals) sit in deep obsidian; White keys (naturals) sit in sleek dark graphite.
+        if (!has_active_sound && is_active < 0.01f && energy < 0.02f) {
+            if (is_accidental) {
+                return glm::vec3(0.038f, 0.042f, 0.055f);
+            } else {
+                return glm::vec3(0.080f, 0.095f, 0.125f);
+            }
+        }
+
+        // 1. Red (Dissonance / Closeness / Off-key) vs Green/Yellow (Harmony / In-Key)
+        // Dissonant: Deep maroon / rich burgundy (R ~ 0.85, G ~ 0.04, B ~ 0.10)
+        // Harmonic: Vibrant emerald green (R ~ 0.05, G ~ 0.95, B ~ 0.10)
+        // Intermediate: Yellow / Gold (R ~ 0.82, G ~ 0.78, B ~ 0.08)
+        float r_base = 0.0f;
+        float g_base = 0.0f;
+        float b_base = 0.05f;
+
+        if (diss > 0.60f) {
+            // High dissonance (e.g. minor 2nd clash, tritone, off-key) -> Maroon / Burgundy
+            float t = (diss - 0.60f) / 0.40f;
+            r_base = 0.65f + 0.35f * t;
+            g_base = 0.08f * (1.0f - t);
+            b_base = 0.06f * (1.0f - t);
+        } else if (diss > 0.28f) {
+            // Intermediate tension (2nds, 6ths, modal transition) -> Yellow / Amber
+            float t = (diss - 0.28f) / 0.32f;
+            r_base = 0.10f + 0.65f * t;
+            g_base = 0.90f - 0.25f * t;
+            b_base = 0.05f;
+        } else {
+            // Pure harmonic range (unison, octave, 5ths, 4ths, 3rds in-key) -> Pure Green / Emerald
+            float t = diss / 0.28f;
+            r_base = 0.03f + 0.07f * t;
+            g_base = 0.96f - 0.06f * t;
+            b_base = 0.08f;
+        }
+
+        // 2. Blue Factor: Based on what is actively being played
+        // Actively struck notes inject strong Blue:
+        //   Harmonic (Green) + Blue -> Cyan / Blue-Green
+        //   Dissonant (Red) + Blue -> Purple / Magenta / Violet
+        if (is_active > 0.01f) {
+            b_base = std::max(b_base, is_active * 0.92f);
+        }
+
+        glm::vec3 col(r_base, g_base, b_base);
+
+        // 3. Unplayed notes baseline & Light vs Darkness
+        // Light and darkness represents the cascading intensity where frequencies modulate:
+        // - Unplayed notes outside harmonic range fall to black/red
+        // - Unplayed notes within harmonic range fall to dark blue/green
+        // - Cascading modulation energy scales luminosity up to brilliant illumination
+        if (is_active < 0.01f) {
+            if (diss > 0.50f) {
+                // Outside harmonic range -> resting black/red baseline
+                glm::vec3 black_red(0.12f * diss, 0.01f, 0.02f);
+                float eFactor = std::clamp(energy * 1.8f, 0.0f, 1.0f);
+                col = glm::mix(black_red, col, eFactor);
+            } else {
+                // Within harmonic range -> resting dark blue/green baseline
+                glm::vec3 dark_bg(0.01f, 0.08f * (1.0f - diss), 0.09f * (1.0f - diss));
+                float eFactor = std::clamp(energy * 1.8f, 0.0f, 1.0f);
+                col = glm::mix(dark_bg, col, eFactor);
+            }
+            if (is_accidental && energy < 0.20f) {
+                col *= 0.82f;
+            }
+            float lum = 0.12f + 0.88f * energy;
+            col *= lum;
+        } else {
+            float lum = 0.80f + 0.25f * energy;
+            col *= lum;
+        }
+
+        // 4. White Factor: Based on how much it's resonating across octaves and pitchclasses
+        // Higher resonance adds white sheen, lifting toward pure white-hot luminance
+        float w_amount = std::clamp(resonance, 0.0f, 1.0f);
+        if (w_amount > 0.02f) {
+            glm::vec3 white(1.0f, 1.0f, 1.0f);
+            col = glm::mix(col, white, w_amount * 0.70f);
+            col += white * (w_amount * w_amount * 0.45f);
+        }
+
+        return glm::clamp(col, glm::vec3(0.0f), glm::vec3(1.35f));
+    }
+
+    glm::vec3 getThemeColor(float t, uint32_t scheme, float mag, float yNorm) {
+        switch (scheme % 6) {
+            case 0: // Cyberpunk: Neon Pink -> Cyan -> Electric Yellow
+                if (t < 0.5f) {
+                    float f = t * 2.0f;
+                    return glm::vec3(1.0f - 0.8f * f, 0.1f + 0.8f * f, 0.9f) * (0.4f + 0.6f * yNorm);
+                } else {
+                    float f = (t - 0.5f) * 2.0f;
+                    return glm::vec3(0.2f + 0.8f * f, 0.9f, 1.0f - 0.8f * f) * (0.4f + 0.6f * yNorm);
+                }
+            case 1: // Synthwave: Deep Violet -> Hot Pink -> Sunset Orange
+                return glm::vec3(
+                    0.3f + 0.7f * std::sin(t * 3.1415f),
+                    0.1f + 0.6f * t,
+                    0.9f * (1.0f - t) + 0.1f
+                ) * (0.4f + 0.6f * yNorm);
+            case 2: // Fire: Dark Red -> Yellow -> White
+                return glm::vec3(
+                    std::min(1.0f, mag * 1.5f + 0.3f),
+                    std::min(1.0f, mag * 1.2f),
+                    std::max(0.0f, mag - 0.6f) * 2.5f
+                ) * (0.5f + 0.5f * yNorm);
+            case 3: // Spectrum Rainbow
+                {
+                    float hue = t * 6.0f;
+                    float c = 1.0f;
+                    float x = c * (1.0f - std::abs(std::fmod(hue, 2.0f) - 1.0f));
+                    glm::vec3 base(0.0f);
+                    if (hue < 1.0f) base = glm::vec3(c, x, 0.0f);
+                    else if (hue < 2.0f) base = glm::vec3(x, c, 0.0f);
+                    else if (hue < 3.0f) base = glm::vec3(0.0f, c, x);
+                    else if (hue < 4.0f) base = glm::vec3(0.0f, x, c);
+                    else if (hue < 5.0f) base = glm::vec3(x, 0.0f, c);
+                    else base = glm::vec3(c, 0.0f, x);
+                    return base * (0.4f + 0.6f * yNorm);
+                }
+            case 4: // Matrix: Emerald Green
+                return glm::vec3(0.05f * (1.0f - t), 0.4f + 0.6f * mag, 0.15f) * (0.3f + 0.7f * yNorm);
+            case 5: // Neon Ice: Deep Navy -> Glacial Cyan -> Mint -> Frost
+            default:
+                return glm::vec3(
+                    0.05f + 0.35f * t,
+                    0.5f + 0.5f * (1.0f - std::abs(t - 0.5f) * 2.0f),
+                    0.85f + 0.15f * mag
+                ) * (0.35f + 0.65f * yNorm);
+        }
+    }
+
+    void buildSceneGeometry(std::vector<VizVertex>& vertices, std::vector<uint32_t>& indices, const std::vector<float>& current_bins, const NovaVisualizerConfig& cfg, const NovaHarmonicData& harm) {
+        vertices.clear();
+        indices.clear();
+
+        uint32_t barCount = std::min((uint32_t)current_bins.size(), cfg.bar_count);
+        if (barCount == 0) barCount = 144;
+
+        auto addQuad = [&](const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& p3, const glm::vec3& p4,
+                           const glm::vec3& c1, const glm::vec3& c2, const glm::vec3& c3, const glm::vec3& c4,
+                           const glm::vec3& norm) {
+            uint32_t startIdx = (uint32_t)vertices.size();
+            vertices.push_back({ p1, c1, norm });
+            vertices.push_back({ p2, c2, norm });
+            vertices.push_back({ p3, c3, norm });
+            vertices.push_back({ p4, c4, norm });
+
+            indices.push_back(startIdx);
+            indices.push_back(startIdx + 1);
+            indices.push_back(startIdx + 2);
+            indices.push_back(startIdx);
+            indices.push_back(startIdx + 2);
+            indices.push_back(startIdx + 3);
+        };
+
+        auto addHudQuad = [&](float x0, float y0, float x1, float y1, const glm::vec3& col) {
+            uint32_t startIdx = (uint32_t)vertices.size();
+            glm::vec3 hudNorm(0.0f, 0.0f, -99.0f); // sentinel normal for 2D HUD branch in shader
+            vertices.push_back({ glm::vec3(x0, y0, 0.0f), col, hudNorm });
+            vertices.push_back({ glm::vec3(x1, y0, 0.0f), col, hudNorm });
+            vertices.push_back({ glm::vec3(x1, y1, 0.0f), col, hudNorm });
+            vertices.push_back({ glm::vec3(x0, y1, 0.0f), col, hudNorm });
+
+            indices.push_back(startIdx);
+            indices.push_back(startIdx + 1);
+            indices.push_back(startIdx + 2);
+            indices.push_back(startIdx);
+            indices.push_back(startIdx + 2);
+            indices.push_back(startIdx + 3);
+        };
+
+        auto addHudFrame = [&](float x0, float y0, float x1, float y1, float th, const glm::vec3& bCol) {
+            addHudQuad(x0, y1 - th, x1, y1, bCol);
+            addHudQuad(x0, y0, x1, y0 + th, bCol);
+            addHudQuad(x0, y0, x0 + th, y1, bCol);
+            addHudQuad(x1 - th, y0, x1, y1, bCol);
+        };
+
+        auto addDiamond = [&](const glm::vec3& pos, float size, const glm::vec3& col) {
+            float s = size;
+            glm::vec3 top = pos + glm::vec3(0, s, 0);
+            glm::vec3 bot = pos - glm::vec3(0, s, 0);
+            glm::vec3 f = pos + glm::vec3(0, 0, s * 0.7f);
+            glm::vec3 b = pos - glm::vec3(0, 0, -s * 0.7f);
+            glm::vec3 l = pos + glm::vec3(-s * 0.7f, 0, 0);
+            glm::vec3 r = pos + glm::vec3(s * 0.7f, 0, 0);
+
+            auto addTri = [&](const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, const glm::vec3& c) {
+                uint32_t base = (uint32_t)vertices.size();
+                glm::vec3 n = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+                vertices.push_back({ v0, c, n });
+                vertices.push_back({ v1, c, n });
+                vertices.push_back({ v2, c, n });
+                indices.push_back(base);
+                indices.push_back(base + 1);
+                indices.push_back(base + 2);
+            };
+
+            addTri(top, r, f, col * 1.25f);
+            addTri(top, f, l, col * 1.15f);
+            addTri(top, l, b, col);
+            addTri(top, b, r, col * 0.95f);
+            addTri(bot, f, r, col * 0.85f);
+            addTri(bot, l, f, col * 0.75f);
+            addTri(bot, b, l, col * 0.65f);
+            addTri(bot, r, b, col * 0.55f);
+        };
+
+        auto addPillar = [&](float cx, float cz, float width, float depth, float height, float tNorm, float mag) {
+            float hw = width * 0.5f;
+            float hd = depth * 0.5f;
+            float y0 = 0.0f;
+            float y1 = std::max(0.05f, height);
+
+            glm::vec3 cBase = getThemeColor(tNorm, cfg.color_scheme, mag, 0.2f);
+            glm::vec3 cTop = getThemeColor(tNorm, cfg.color_scheme, mag, 1.0f);
+            glm::vec3 cCap = cTop * 1.35f;
+
+            // Front (+Z)
+            addQuad(glm::vec3(cx - hw, y0, cz + hd), glm::vec3(cx + hw, y0, cz + hd), glm::vec3(cx + hw, y1, cz + hd), glm::vec3(cx - hw, y1, cz + hd),
+                    cBase, cBase, cTop, cTop, glm::vec3(0, 0, 1));
+            // Back (-Z)
+            addQuad(glm::vec3(cx + hw, y0, cz - hd), glm::vec3(cx - hw, y0, cz - hd), glm::vec3(cx - hw, y1, cz - hd), glm::vec3(cx + hw, y1, cz - hd),
+                    cBase, cBase, cTop, cTop, glm::vec3(0, 0, -1));
+            // Left (-X)
+            addQuad(glm::vec3(cx - hw, y0, cz - hd), glm::vec3(cx - hw, y0, cz + hd), glm::vec3(cx - hw, y1, cz + hd), glm::vec3(cx - hw, y1, cz - hd),
+                    cBase, cBase, cTop, cTop, glm::vec3(-1, 0, 0));
+            // Right (+X)
+            addQuad(glm::vec3(cx + hw, y0, cz + hd), glm::vec3(cx + hw, y0, cz - hd), glm::vec3(cx + hw, y1, cz - hd), glm::vec3(cx + hw, y1, cz + hd),
+                    cBase, cBase, cTop, cTop, glm::vec3(1, 0, 0));
+            // Top (+Y)
+            addQuad(glm::vec3(cx - hw, y1, cz - hd), glm::vec3(cx + hw, y1, cz - hd), glm::vec3(cx + hw, y1, cz + hd), glm::vec3(cx - hw, y1, cz + hd),
+                    cCap, cCap, cCap, cCap, glm::vec3(0, 1, 0));
+        };
+
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+        uint32_t activeMode = cfg.mode % 6;
+
+        if (activeMode == 0) {
+            // Mode 0: 144-Pitch Equalizer Bar with Cents & 12x12 Background Harmonic Grid
+            // Render 12x12 Background Harmonic Grid Matrix (12 PitchClasses X x 12 Octaves Y)
+            // Visualizing the natural frequency overtone ladder and acoustic modulation across octaves
+            bool has_active_sound = false;
+            if (strcmp(harm.chord_name, "Silent") != 0 && strcmp(harm.key_name, "None") != 0) {
+                has_active_sound = true;
+            } else {
+                for (int i = 0; i < 144; i++) {
+                    if (harm.active_keys[i] != 0 || harm.pitch_energy[i] > 0.03f) {
+                        has_active_sound = true;
+                        break;
+                    }
+                }
+            }
+
+            float gridWidth = 22.0f;
+            float gridHeight = 7.2f;
+            float colWidth = gridWidth / 12.0f;
+            float rowHeight = gridHeight / 12.0f;
+            float tileW = colWidth * 0.88f;
+            float tileH = rowHeight * 0.82f;
+            float tileHW = tileW * 0.5f;
+            float tileHH = tileH * 0.5f;
+
+            glm::vec3 gridNodePos[144];
+            glm::vec3 gridNodeCol[144];
+
+            for (int y = 0; y < 12; y++) {
+                for (int x = 0; x < 12; x++) {
+                    int cellIdx = y * 12 + x; // Pitch index across octaves
+                    float diss = harm.grid_harmony[cellIdx];
+                    float e = harm.grid_energy[cellIdx];
+                    float is_active = (harm.active_keys[cellIdx] != 0) ? 1.0f : 0.0f;
+                    float res = harm.grid_resonance[cellIdx];
+
+                    float cx = -gridWidth * 0.5f + (x + 0.5f) * colWidth;
+                    float cy = 1.6f + (y + 0.5f) * rowHeight;
+                    float cz = -6.5f + e * 1.4f; // Dynamic 3D forward pop for active fundamentals and overtone harmonics
+                    if (is_active > 0.01f) {
+                        cz += 0.35f;
+                    }
+
+                    glm::vec3 tileCol = getHarmonicColor(diss, e, is_active, res, isAccidental(x), has_active_sound);
+                    gridNodePos[cellIdx] = glm::vec3(cx, cy, cz);
+                    gridNodeCol[cellIdx] = tileCol;
+
+                    // Front quad of tile
+                    glm::vec3 norm(0.0f, 0.0f, 1.0f);
+                    addQuad(glm::vec3(cx - tileHW, cy - tileHH, cz),
+                            glm::vec3(cx + tileHW, cy - tileHH, cz),
+                            glm::vec3(cx + tileHW, cy + tileHH, cz),
+                            glm::vec3(cx - tileHW, cy + tileHH, cz),
+                            tileCol, tileCol, tileCol * 1.15f, tileCol * 1.15f, norm);
+
+                    // Thin neon bevel border frame around each tile
+                    float borderThick = 0.025f;
+                    glm::vec3 bCol;
+                    if (is_active > 0.01f) {
+                        bCol = glm::vec3(0.35f, 0.85f, 1.0f); // Bright active cyan/blue frame
+                    } else if (res > 0.15f) {
+                        bCol = glm::vec3(0.95f, 0.98f, 1.0f); // Luminous white resonance frame
+                    } else if (e > 0.03f) {
+                        bCol = tileCol * 1.6f;
+                    } else {
+                        bCol = tileCol * 1.3f + glm::vec3(0.03f, 0.04f, 0.06f);
+                    }
+
+                    // Top border
+                    addQuad(glm::vec3(cx - tileHW, cy + tileHH - borderThick, cz + 0.01f),
+                            glm::vec3(cx + tileHW, cy + tileHH - borderThick, cz + 0.01f),
+                            glm::vec3(cx + tileHW, cy + tileHH, cz + 0.01f),
+                            glm::vec3(cx - tileHW, cy + tileHH, cz + 0.01f),
+                            bCol, bCol, bCol, bCol, norm);
+                    // Bottom border
+                    addQuad(glm::vec3(cx - tileHW, cy - tileHH, cz + 0.01f),
+                            glm::vec3(cx + tileHW, cy - tileHH, cz + 0.01f),
+                            glm::vec3(cx + tileHW, cy - tileHH + borderThick, cz + 0.01f),
+                            glm::vec3(cx - tileHW, cy - tileHH + borderThick, cz + 0.01f),
+                            bCol, bCol, bCol, bCol, norm);
+                    // Left border
+                    addQuad(glm::vec3(cx - tileHW, cy - tileHH, cz + 0.01f),
+                            glm::vec3(cx - tileHW + borderThick, cy - tileHH, cz + 0.01f),
+                            glm::vec3(cx - tileHW + borderThick, cy + tileHH, cz + 0.01f),
+                            glm::vec3(cx - tileHW, cy + tileHH, cz + 0.01f),
+                            bCol, bCol, bCol, bCol, norm);
+                    // Right border
+                    addQuad(glm::vec3(cx + tileHW - borderThick, cy - tileHH, cz + 0.01f),
+                            glm::vec3(cx + tileHW, cy - tileHH, cz + 0.01f),
+                            glm::vec3(cx + tileHW, cy + tileHH, cz + 0.01f),
+                            glm::vec3(cx + tileHW - borderThick, cy + tileHH, cz + 0.01f),
+                            bCol, bCol, bCol, bCol, norm);
+                }
+            }
+
+            // 2. Render Continuous 3D Streaming Wavetable (Foreground: Z = 0.2f to 1.25f)
+            // Driven by actual synthesized PCM audio time-series and full-band harmonic analysis
+            float totalSpan = 26.0f;
+            float step = totalSpan / 144.0f;
+
+            glm::vec3 waveTopPos[144];
+            glm::vec3 waveCol[144];
+            float waveHeights[144];
+
+            for (uint32_t i = 0; i < 144; i++) {
+                float x = -totalSpan * 0.5f + (i + 0.5f) * step;
+                float mag = harm.pitch_energy[i];
+                float pcm = harm.waveform[i]; // Actual streaming synthesized PCM sample (-1.0 to 1.0)
+                uint32_t pc = i % 12;
+                float diss = harm.pitchclass_dissonance[pc];
+                float is_active = (harm.active_keys[i] != 0) ? 1.0f : 0.0f;
+                float res = harm.pitch_resonance[i];
+
+                // True acoustic audio waveform modulation + pitch energy resonance
+                float h_wave = 0.18f + (pcm * 0.95f * cfg.height_scale) + (mag * 5.4f * cfg.height_scale);
+                float y_crest = std::max(0.04f, h_wave);
+                waveHeights[i] = y_crest;
+
+                glm::vec3 col = getHarmonicColor(diss, mag, is_active, res, isAccidental(pc), has_active_sound);
+                waveTopPos[i] = glm::vec3(x, y_crest, 1.25f);
+                waveCol[i] = col;
+            }
+
+            // Render continuous 3D streaming wavetable mesh with depth slices (waterfall tape terrain)
+            int numSlices = 4;
+            float sliceZ[4] = { 1.25f, 0.90f, 0.55f, 0.20f };
+            float sliceDamp[4] = { 1.0f, 0.82f, 0.64f, 0.45f };
+
+            for (int s = 0; s < numSlices - 1; s++) {
+                float z0 = sliceZ[s];
+                float z1 = sliceZ[s + 1];
+                float d0 = sliceDamp[s];
+                float d1 = sliceDamp[s + 1];
+
+                for (uint32_t i = 0; i < 143; i++) {
+                    float xA = waveTopPos[i].x;
+                    float xB = waveTopPos[i + 1].x;
+
+                    float yA0 = waveHeights[i] * d0;
+                    float yB0 = waveHeights[i + 1] * d0;
+                    float yA1 = waveHeights[i] * d1;
+                    float yB1 = waveHeights[i + 1] * d1;
+
+                    glm::vec3 colA0 = waveCol[i] * d0;
+                    glm::vec3 colB0 = waveCol[i + 1] * d0;
+                    glm::vec3 colA1 = waveCol[i] * d1;
+                    glm::vec3 colB1 = waveCol[i + 1] * d1;
+
+                    glm::vec3 p0(xA, yA0, z0);
+                    glm::vec3 p1(xB, yB0, z0);
+                    glm::vec3 p2(xB, yB1, z1);
+                    glm::vec3 p3(xA, yA1, z1);
+
+                    glm::vec3 norm = glm::normalize(glm::cross(p1 - p0, p3 - p0));
+                    addQuad(p0, p1, p2, p3, colA0, colB0, colB1, colA1, norm);
+
+                    // Live crest front skirt dropping to ground
+                    if (s == 0) {
+                        glm::vec3 pf0(xA, 0.0f, z0);
+                        glm::vec3 pf1(xB, 0.0f, z0);
+                        glm::vec3 normF(0.0f, 0.0f, 1.0f);
+                        addQuad(pf0, pf1, p1, p0, colA0 * 0.35f, colB0 * 0.35f, colB0 * 1.25f, colA0 * 1.25f, normF);
+
+                        // Cents tuning needle on live crest peak
+                        float mag = harm.pitch_energy[i];
+                        if (mag > 0.015f) {
+                            float cents = harm.pitch_cents[i];
+                            float cNorm = std::clamp(cents / 50.0f, -1.0f, 1.0f);
+                            float xNeedle = xA + cNorm * (step * 0.40f);
+                            float nW = step * 0.25f;
+                            float nH = 0.12f;
+                            glm::vec3 nCol(1.0f, 1.0f, 1.0f);
+                            addQuad(glm::vec3(xNeedle - nW * 0.5f, yA0, z0 + 0.02f),
+                                    glm::vec3(xNeedle + nW * 0.5f, yA0, z0 + 0.02f),
+                                    glm::vec3(xNeedle + nW * 0.5f, yA0 + nH, z0 + 0.02f),
+                                    glm::vec3(xNeedle - nW * 0.5f, yA0 + nH, z0 + 0.02f),
+                                    nCol, nCol, nCol, nCol, normF);
+                        }
+
+                        // Octave divider line across wavetable
+                        if (i % 12 == 0 && i > 0) {
+                            float divX = xA - step * 0.5f;
+                            glm::vec3 divCol(0.25f, 0.55f, 0.85f);
+                            addQuad(glm::vec3(divX - 0.02f, 0.0f, z0 + 0.03f),
+                                    glm::vec3(divX + 0.02f, 0.0f, z0 + 0.03f),
+                                    glm::vec3(divX + 0.02f, yA0 + 0.25f, z0 + 0.03f),
+                                    glm::vec3(divX - 0.02f, yA0 + 0.25f, z0 + 0.03f),
+                                    divCol, divCol, divCol, divCol, normF);
+                        }
+                    }
+                }
+            }
+
+            // 3. Render 3D Transition Arcs & Flying Notes from 12x12 Grid to Streaming Wavetable
+            // Visualizing notes taking flight from harmonic overtone matrix into streaming wavetable
+            for (uint32_t i = 0; i < 144; i++) {
+                float mag = harm.pitch_energy[i];
+                float e = harm.grid_energy[i];
+                float is_active = (harm.active_keys[i] != 0) ? 1.0f : 0.0f;
+                float res = harm.pitch_resonance[i];
+
+                if (mag < 0.015f && e < 0.015f && is_active < 0.01f && res < 0.04f) {
+                    continue;
+                }
+
+                glm::vec3 P0 = gridNodePos[i];
+                glm::vec3 P1 = waveTopPos[i];
+
+                // Apex: The Peak of Transition in mid-air
+                float apexHeight = 2.4f + mag * 4.2f * cfg.height_scale + e * 2.2f + res * 1.5f;
+                glm::vec3 Pmid = (P0 + P1) * 0.5f + glm::vec3(0.0f, apexHeight, 0.0f);
+
+                glm::vec3 startCol = gridNodeCol[i];
+                glm::vec3 endCol = waveCol[i];
+                glm::vec3 apexCol = (is_active > 0.01f) ? glm::vec3(0.4f, 0.95f, 1.0f) :
+                                    ((res > 0.15f) ? glm::vec3(1.0f, 1.0f, 1.0f) : (endCol * 1.4f));
+
+                // A. Luminous Bezier Arc Stream Ribbon
+                int numSegs = 10;
+                float ribbonHalfW = (is_active > 0.01f) ? 0.07f : (0.035f + mag * 0.04f);
+
+                auto evalBezier = [&](float t) {
+                    float omt = 1.0f - t;
+                    return omt * omt * P0 + 2.0f * omt * t * Pmid + t * t * P1;
+                };
+
+                for (int seg = 0; seg < numSegs; seg++) {
+                    float tA = (float)seg / (float)numSegs;
+                    float tB = (float)(seg + 1) / (float)numSegs;
+
+                    glm::vec3 posA = evalBezier(tA);
+                    glm::vec3 posB = evalBezier(tB);
+
+                    glm::vec3 tangent = glm::normalize(posB - posA);
+                    glm::vec3 binorm = glm::normalize(glm::cross(tangent, glm::vec3(0, 1, 0)));
+                    if (glm::length(binorm) < 0.01f) binorm = glm::vec3(1, 0, 0);
+
+                    glm::vec3 cA = (tA < 0.5f) ? glm::mix(startCol, apexCol, tA * 2.0f) : glm::mix(apexCol, endCol, (tA - 0.5f) * 2.0f);
+                    glm::vec3 cB = (tB < 0.5f) ? glm::mix(startCol, apexCol, tB * 2.0f) : glm::mix(apexCol, endCol, (tB - 0.5f) * 2.0f);
+
+                    glm::vec3 vA0 = posA - binorm * ribbonHalfW;
+                    glm::vec3 vA1 = posA + binorm * ribbonHalfW;
+                    glm::vec3 vB0 = posB - binorm * ribbonHalfW;
+                    glm::vec3 vB1 = posB + binorm * ribbonHalfW;
+
+                    glm::vec3 nArc = glm::cross(tangent, binorm);
+                    addQuad(vA0, vA1, vB1, vB0, cA, cA, cB, cB, nArc);
+                }
+
+                // B. Traveling Energy Pulse (Flying Note along trajectory)
+                float speed = 2.4f;
+                float pulseT = std::fmod(time * speed + (float)i * 0.0833f, 1.0f);
+                glm::vec3 pulsePos = evalBezier(pulseT);
+                float pulseSize = (is_active > 0.01f) ? 0.28f : (0.12f + mag * 0.22f);
+                glm::vec3 pCol = (pulseT < 0.5f) ? glm::mix(startCol, apexCol, pulseT * 2.0f) : glm::mix(apexCol, endCol, (pulseT - 0.5f) * 2.0f);
+                if (std::abs(pulseT - 0.5f) < 0.15f) {
+                    pCol = glm::mix(pCol, glm::vec3(1.0f, 1.0f, 1.0f), 0.65f); // White flash at peak of transition
+                    pulseSize *= 1.35f;
+                }
+                addDiamond(pulsePos, pulseSize, pCol);
+
+                // C. Peak of Transition Beacon / Crest Indicator
+                if (is_active > 0.01f || mag > 0.25f) {
+                    addDiamond(Pmid, 0.16f + mag * 0.18f, apexCol * 1.3f);
+                }
+            }
+        } else if (activeMode == 1) {
+            // Mode 1: 3D Wave Ribbon & Oscillating Terrain
+            float totalSpan = 20.0f;
+            float step = totalSpan / (float)(barCount - 1);
+            float ribbonDepth = 3.2f;
+
+            for (uint32_t i = 0; i < barCount - 1; i++) {
+                float t0 = (float)i / (float)barCount;
+                float t1 = (float)(i + 1) / (float)barCount;
+                float x0 = -totalSpan * 0.5f + i * step;
+                float x1 = x0 + step;
+                float mag0 = i < current_bins.size() ? current_bins[i] : 0.0f;
+                float mag1 = (i + 1) < current_bins.size() ? current_bins[i + 1] : 0.0f;
+                float y0 = mag0 * cfg.height_scale * 6.0f + 0.05f;
+                float y1 = mag1 * cfg.height_scale * 6.0f + 0.05f;
+
+                glm::vec3 c0 = getThemeColor(t0, cfg.color_scheme, mag0, 0.9f);
+                glm::vec3 c1 = getThemeColor(t1, cfg.color_scheme, mag1, 0.9f);
+
+                addQuad(glm::vec3(x0, y0, ribbonDepth * 0.5f), glm::vec3(x1, y1, ribbonDepth * 0.5f),
+                        glm::vec3(x1, y1, -ribbonDepth * 0.5f), glm::vec3(x0, y0, -ribbonDepth * 0.5f),
+                        c0, c1, c1, c0, glm::vec3(0, 1, 0));
+
+                // Underside glow curtain
+                addQuad(glm::vec3(x0, 0.0f, 0.0f), glm::vec3(x1, 0.0f, 0.0f),
+                        glm::vec3(x1, y1, 0.0f), glm::vec3(x0, y0, 0.0f),
+                        c0 * 0.2f, c1 * 0.2f, c1, c0, glm::vec3(0, 0, 1));
+            }
+        } else if (activeMode == 2) {
+            // Mode 2: Radial 3D Orbit Ring
+            float radius = 7.0f;
+            float pWidth = 0.45f;
+            float pDepth = 0.35f;
+
+            for (uint32_t i = 0; i < barCount; i++) {
+                float t = (float)i / (float)barCount;
+                float angle = t * 2.0f * 3.14159265f;
+                float cx = radius * std::cos(angle);
+                float cz = radius * std::sin(angle);
+                float mag = i < current_bins.size() ? current_bins[i] : 0.0f;
+                float h = mag * cfg.height_scale * 6.5f + 0.08f;
+                addPillar(cx, cz, pWidth, pDepth, h, t, mag);
+            }
+
+            // Pulsing central power core
+            float coreH = cfg.bass_pulse * 4.0f + 0.25f;
+            addPillar(0.0f, 0.0f, 1.3f, 1.3f, coreH, 0.5f, cfg.bass_pulse);
+        } else if (activeMode == 3) {
+            // Mode 3: 3D Cyber Tunnel / Hyperspace Warp
+            int ringCount = 20;
+            float ringSpacing = 1.8f;
+            float baseRadius = 3.6f;
+            int segments = 12;
+
+            for (int r = 0; r < ringCount; r++) {
+                float z = -25.0f + r * ringSpacing;
+                float tRing = (float)r / (float)ringCount;
+                int binIdx = (r * (int)barCount) / ringCount;
+                float mag = binIdx < current_bins.size() ? current_bins[binIdx] : 0.0f;
+                float rRadius = baseRadius + mag * cfg.height_scale * 3.0f + cfg.bass_pulse * 0.8f;
+                float twist = (float)r * 0.15f + time * 0.5f;
+
+                for (int s = 0; s < segments; s++) {
+                    float a0 = ((float)s / (float)segments) * 6.283185f + twist;
+                    float a1 = (((float)(s + 1)) / (float)segments) * 6.283185f + twist;
+
+                    glm::vec3 p0(rRadius * std::cos(a0), rRadius * std::sin(a0), z);
+                    glm::vec3 p1(rRadius * std::cos(a1), rRadius * std::sin(a1), z);
+                    glm::vec3 p2(rRadius * 1.08f * std::cos(a1), rRadius * 1.08f * std::sin(a1), z + 0.4f);
+                    glm::vec3 p3(rRadius * 1.08f * std::cos(a0), rRadius * 1.08f * std::sin(a0), z + 0.4f);
+
+                    glm::vec3 col = getThemeColor(tRing, cfg.color_scheme, mag, 0.85f);
+                    glm::vec3 norm = glm::normalize(glm::vec3(-std::cos(a0), -std::sin(a0), 0.2f));
+                    addQuad(p0, p1, p2, p3, col, col, col * 1.35f, col * 1.35f, norm);
+                }
+            }
+        } else if (activeMode == 4) {
+            // Mode 4: 3D Galaxy Particle Vortex / Nebula Swarm
+            int starCount = 140;
+            float corePulse = cfg.bass_pulse * 2.2f;
+            addDiamond(glm::vec3(0.0f, 1.6f, 0.0f), 0.9f + corePulse * 0.5f, getThemeColor(0.5f, cfg.color_scheme, 1.0f, 1.0f));
+
+            for (int s = 0; s < starCount; s++) {
+                float t = (float)s / (float)starCount;
+                int arm = s % 2;
+                float armOffset = arm * 3.14159265f;
+                float theta = t * 4.2f * 3.14159265f + armOffset + time * 0.4f;
+                float r = 1.4f + t * 9.8f;
+
+                int binIdx = (int)(t * (barCount - 1));
+                float mag = binIdx < current_bins.size() ? current_bins[binIdx] : 0.0f;
+                float y = 1.6f + std::sin(theta * 2.5f + time) * 0.45f + (mag * cfg.height_scale * 3.2f);
+
+                float x = r * std::cos(theta);
+                float z = r * std::sin(theta);
+
+                glm::vec3 starColor = getThemeColor(t, cfg.color_scheme, mag, 0.95f);
+                float starSize = 0.16f + mag * 0.38f;
+                addDiamond(glm::vec3(x, y, z), starSize, starColor);
+            }
+        } else {
+            // Mode 5: 3D Polyhedral Crystal Gemstone Core
+            glm::vec3 corePos(0.0f, 2.0f, 0.0f);
+            float coreScale = 1.6f + cfg.bass_pulse * 1.4f;
+            addDiamond(corePos, coreScale, getThemeColor(0.1f, cfg.color_scheme, cfg.bass_pulse, 1.0f));
+
+            // 3 Orbiting frequency shard rings
+            for (int ring = 0; ring < 3; ring++) {
+                float ringRadius = 4.2f + ring * 2.4f;
+                float tilt = 0.35f * (ring - 1);
+                int shards = 20;
+                for (int i = 0; i < shards; i++) {
+                    float t = (float)i / (float)shards;
+                    float angle = t * 6.283185f + time * (0.45f + ring * 0.2f) * (ring % 2 == 0 ? 1.0f : -1.0f);
+                    int binIdx = (i * 2 + ring * 14) % barCount;
+                    float mag = binIdx < current_bins.size() ? current_bins[binIdx] : 0.0f;
+
+                    float dist = ringRadius + mag * cfg.height_scale * 3.0f;
+                    float sx = dist * std::cos(angle);
+                    float sz = dist * std::sin(angle);
+                    float sy = corePos.y + std::sin(angle * 2.0f) * tilt * 2.8f + (mag * 1.8f);
+
+                    glm::vec3 shardColor = getThemeColor(t, cfg.color_scheme, mag, 1.0f);
+                    addDiamond(glm::vec3(sx, sy, sz), 0.22f + mag * 0.45f, shardColor);
+                }
+            }
+        }
+
+        // Add 3D Cyber Floor Grid Lines (for modes 0, 1, 2, 4, 5)
+        if (activeMode != 3) {
+            glm::vec3 gridColor(0.06f, 0.12f, 0.2f);
+            float gSize = 14.0f;
+            float gStep = 2.0f;
+            for (float x = -gSize; x <= gSize; x += gStep) {
+                addQuad(glm::vec3(x - 0.02f, -0.01f, -gSize), glm::vec3(x + 0.02f, -0.01f, -gSize),
+                        glm::vec3(x + 0.02f, -0.01f, gSize), glm::vec3(x - 0.02f, -0.01f, gSize),
+                        gridColor, gridColor, gridColor, gridColor, glm::vec3(0, 1, 0));
+            }
+            for (float z = -gSize; z <= gSize; z += gStep) {
+                addQuad(glm::vec3(-gSize, -0.01f, z - 0.02f), glm::vec3(gSize, -0.01f, z - 0.02f),
+                        glm::vec3(gSize, -0.01f, z + 0.02f), glm::vec3(-gSize, -0.01f, z + 0.02f),
+                        gridColor, gridColor, gridColor, gridColor, glm::vec3(0, 1, 0));
+            }
+        }
+
+        // 2D Screen-Space Interactive HUD
+        if (show_hud) {
+            // Top HUD Bar background
+            addHudQuad(-1.0f, 0.86f, 1.0f, 1.0f, glm::vec3(0.03f, 0.04f, 0.07f));
+            addHudQuad(-1.0f, 0.856f, 1.0f, 0.86f, getThemeColor(0.5f, cfg.color_scheme, 1.0f, 1.0f) * 0.75f);
+
+            // 6 Mode selector buttons
+            float tabW = 2.0f / 6.0f;
+            for (int m = 0; m < 6; m++) {
+                float x0 = -1.0f + m * tabW + 0.015f;
+                float x1 = x0 + tabW - 0.030f;
+                float y0 = 0.88f;
+                float y1 = 0.98f;
+
+                bool isActive = (activeMode == (uint32_t)m);
+                glm::vec3 tabBg = isActive ? getThemeColor((float)m / 6.0f, cfg.color_scheme, 1.0f, 0.9f) : glm::vec3(0.08f, 0.11f, 0.16f);
+                addHudQuad(x0, y0, x1, y1, tabBg);
+
+                if (isActive) {
+                    addHudFrame(x0 - 0.005f, y0 - 0.005f, x1 + 0.005f, y1 + 0.005f, 0.004f, glm::vec3(1.0f));
+                } else {
+                    addHudFrame(x0, y0, x1, y1, 0.002f, glm::vec3(0.18f, 0.22f, 0.30f));
+                }
+            }
+
+            // Bottom HUD Bar background
+            addHudQuad(-1.0f, -1.0f, 1.0f, -0.74f, glm::vec3(0.03f, 0.04f, 0.07f));
+            addHudQuad(-1.0f, -0.74f, 1.0f, -0.736f, getThemeColor(0.5f, cfg.color_scheme, 1.0f, 1.0f) * 0.75f);
+
+            // 2-Octave interactive piano keyboard mapping
+            float keyW = 1.92f / 14.0f;
+            float startX = -0.96f;
+
+            int lowerBase = (base_octave + 1) * 12;
+            int upperBase = lowerBase + 12;
+            int whiteMidis[14] = {
+                lowerBase+0, lowerBase+2, lowerBase+4, lowerBase+5, lowerBase+7, lowerBase+9, lowerBase+11,
+                upperBase+0, upperBase+2, upperBase+4, upperBase+5, upperBase+7, upperBase+9, upperBase+11
+            };
+
+            // Draw white keys
+            for (int k = 0; k < 14; k++) {
+                float x0 = startX + k * keyW + 0.004f;
+                float x1 = x0 + keyW - 0.008f;
+                float y0 = -0.98f;
+                float y1 = -0.79f;
+
+                int midi = whiteMidis[k];
+                bool isPressed = (midi >= 0 && midi < 128 && active_keys[midi]);
+
+                glm::vec3 col = isPressed ? glm::vec3(0.1f, 1.0f, 0.85f) : glm::vec3(0.82f, 0.85f, 0.90f);
+                addHudQuad(x0, y0, x1, y1, col);
+                addHudFrame(x0, y0, x1, y1, 0.002f, glm::vec3(0.2f, 0.25f, 0.3f));
+            }
+
+            // Draw black keys
+            int blackWhiteIndices[10] = { 0, 1, 3, 4, 5, 7, 8, 10, 11, 12 };
+            int blackMidis[10] = {
+                lowerBase+1, lowerBase+3, lowerBase+6, lowerBase+8, lowerBase+10,
+                upperBase+1, upperBase+3, upperBase+6, upperBase+8, upperBase+10
+            };
+
+            float bWidth = keyW * 0.62f;
+            for (int b = 0; b < 10; b++) {
+                int wIdx = blackWhiteIndices[b];
+                float midX = startX + (wIdx + 1) * keyW;
+                float x0 = midX - bWidth * 0.5f;
+                float x1 = midX + bWidth * 0.5f;
+                float y0 = -0.89f;
+                float y1 = -0.79f;
+
+                int midi = blackMidis[b];
+                bool isPressed = (midi >= 0 && midi < 128 && active_keys[midi]);
+
+                glm::vec3 bCol = isPressed ? glm::vec3(1.0f, 0.08f, 0.65f) : glm::vec3(0.10f, 0.12f, 0.16f);
+                addHudQuad(x0, y0, x1, y1, bCol);
+                addHudFrame(x0, y0, x1, y1, 0.002f, glm::vec3(0.4f, 0.45f, 0.55f));
+            }
+
+            // Octave Selector Indicator Pips (Octaves 1 to 7)
+            float octPipW = 0.052f;
+            float octGap = 0.010f;
+            float totalOctW = 7.0f * octPipW + 6.0f * octGap;
+            float octStartX = -totalOctW * 0.5f;
+            float octY0 = -0.772f;
+            float octY1 = -0.742f;
+
+            for (int oct = 1; oct <= 7; oct++) {
+                float ox0 = octStartX + (oct - 1) * (octPipW + octGap);
+                float ox1 = ox0 + octPipW;
+                bool isCurOct = (oct == base_octave);
+                glm::vec3 pipCol = isCurOct ? glm::vec3(0.0f, 1.0f, 0.75f) : glm::vec3(0.12f, 0.16f, 0.22f);
+                addHudQuad(ox0, octY0, ox1, octY1, pipCol);
+                addHudFrame(ox0, octY0, ox1, octY1, 0.002f, isCurOct ? glm::vec3(1.0f) : glm::vec3(0.25f, 0.3f, 0.4f));
+            }
+        }
+    }
+
+    void updateSpectrum(const float* new_bins, uint32_t count, const NovaVisualizerConfig* cfg) {
+        std::lock_guard<std::mutex> lock(data_mutex);
+        if (cfg) {
+            viz_config = *cfg;
+            if (cfg->base_octave >= 1 && cfg->base_octave <= 7) {
+                if (base_octave != (int)cfg->base_octave) {
+                    base_octave = (int)cfg->base_octave;
+                    active_keys.fill(false);
+                }
+            }
+            if (cfg->camera_reset != 0) {
+                cam_yaw = 0.0f;
+                cam_pitch = 0.20f;
+                cam_distance = 18.5f;
+                cam_target_x = 0.0f;
+                cam_target_y = 3.2f;
+                cam_target_z = 0.0f;
+                viz_config.camera_reset = 0;
+            } else if (!mouse_down && !mouse_panning && cfg->cam_distance >= 2.0f) {
+                cam_yaw = cfg->cam_yaw;
+                cam_pitch = cfg->cam_pitch;
+                cam_distance = cfg->cam_distance;
+                cam_target_x = cfg->cam_target_x;
+                cam_target_y = cfg->cam_target_y;
+                cam_target_z = cfg->cam_target_z;
+            }
+        }
+        if (count != bins.size()) {
+            bins.resize(count);
+            smoothed_bins.resize(count, 0.0f);
+        }
+        for (uint32_t i = 0; i < count; i++) {
+            bins[i] = new_bins[i];
+            float decay = viz_config.decay_rate;
+            if (bins[i] > smoothed_bins[i]) {
+                smoothed_bins[i] = bins[i]; // fast attack
+            } else {
+                smoothed_bins[i] = smoothed_bins[i] * decay + bins[i] * (1.0f - decay);
+            }
+        }
+    }
+
+    void updateHarmonics(const NovaHarmonicData* data) {
+        std::lock_guard<std::mutex> lock(data_mutex);
+        if (data) {
+            harmonic_data = *data;
+        }
+    }
+
+    bool renderFrame() {
+        if (!is_initialized) return false;
+        if (should_close) return false;
+
+        if (headless || !window) {
+            return true;
+        }
+
+        // Poll SDL events
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT) {
+                should_close = true;
+                return false;
+            }
+            if (e.type == SDL_WINDOWEVENT) {
+                if (e.window.event == SDL_WINDOWEVENT_RESIZED || e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    recreateSwapChain();
+                    pushEvent(8, (uint32_t)e.window.data1, (float)e.window.data2);
+                }
+            }
+            if (e.type == SDL_KEYDOWN) {
+                SDL_Keycode sym = e.key.keysym.sym;
+                uint16_t mod = SDL_GetModState();
+                bool shift = (mod & KMOD_SHIFT) != 0;
+
+                int midi = sdlKeyToMidi(sym, base_octave);
+                if (midi >= 0 && !e.key.repeat) {
+                    if (midi < 128) active_keys[midi] = true;
+                    pushEvent(0, (uint32_t)midi, 0.85f);
+                } else if (sym == SDLK_ESCAPE) {
+                    pushEvent(3, 0, 0.0f); // Panic / silence all
+                } else if (sym == SDLK_SPACE) {
+                    pushEvent(2, 0, 0.0f); // Transport toggle
+                } else if (sym == SDLK_h || sym == SDLK_F8) {
+                    show_hud = !show_hud;
+                } else if (sym == SDLK_r || sym == SDLK_HOME) {
+                    // Camera Reset
+                    cam_yaw = 0.0f;
+                    cam_pitch = 0.20f;
+                    cam_distance = 18.5f;
+                    cam_target_x = 0.0f;
+                    cam_target_y = 3.2f;
+                    cam_target_z = 0.0f;
+                    pushCameraUpdateEvents();
+                } else if (sym == SDLK_F9 || sym == SDLK_c) {
+                    // Camera Preset Cycle
+                    current_cam_preset = (current_cam_preset + 1) % 4;
+                    setCameraPreset(current_cam_preset);
+                } else if (sym == SDLK_LEFT) {
+                    if (shift) {
+                        float panSpeed = 0.025f * cam_distance;
+                        cam_target_x -= std::cos(cam_yaw) * panSpeed;
+                        cam_target_z += std::sin(cam_yaw) * panSpeed;
+                    } else {
+                        cam_yaw -= 0.05f;
+                    }
+                    pushCameraUpdateEvents();
+                } else if (sym == SDLK_RIGHT) {
+                    if (shift) {
+                        float panSpeed = 0.025f * cam_distance;
+                        cam_target_x += std::cos(cam_yaw) * panSpeed;
+                        cam_target_z -= std::sin(cam_yaw) * panSpeed;
+                    } else {
+                        cam_yaw += 0.05f;
+                    }
+                    pushCameraUpdateEvents();
+                } else if (sym == SDLK_UP) {
+                    if (shift) {
+                        float panSpeed = 0.025f * cam_distance;
+                        cam_target_y += panSpeed;
+                        pushCameraUpdateEvents();
+                    } else if (mod & (KMOD_CTRL | KMOD_ALT)) {
+                        cam_pitch = std::clamp(cam_pitch - 0.04f, 0.05f, 1.50f);
+                        pushCameraUpdateEvents();
+                    } else {
+                        if (base_octave < 7) {
+                            base_octave++;
+                            viz_config.base_octave = (uint32_t)base_octave;
+                            active_keys.fill(false);
+                            pushEvent(6, (uint32_t)base_octave, 0.0f);
+                        }
+                    }
+                } else if (sym == SDLK_DOWN) {
+                    if (shift) {
+                        float panSpeed = 0.025f * cam_distance;
+                        cam_target_y -= panSpeed;
+                        pushCameraUpdateEvents();
+                    } else if (mod & (KMOD_CTRL | KMOD_ALT)) {
+                        cam_pitch = std::clamp(cam_pitch + 0.04f, 0.05f, 1.50f);
+                        pushCameraUpdateEvents();
+                    } else {
+                        if (base_octave > 1) {
+                            base_octave--;
+                            viz_config.base_octave = (uint32_t)base_octave;
+                            active_keys.fill(false);
+                            pushEvent(6, (uint32_t)base_octave, 0.0f);
+                        }
+                    }
+                } else if (sym == SDLK_PAGEUP) {
+                    cam_distance = std::clamp(cam_distance - 1.5f, 3.0f, 60.0f);
+                    pushCameraUpdateEvents();
+                } else if (sym == SDLK_PAGEDOWN) {
+                    cam_distance = std::clamp(cam_distance + 1.5f, 3.0f, 60.0f);
+                    pushCameraUpdateEvents();
+                } else if (sym == SDLK_BACKQUOTE || sym == SDLK_F7) {
+                    viz_config.color_scheme = (viz_config.color_scheme + 1) % 6;
+                    pushEvent(5, viz_config.color_scheme, 0.0f);
+                } else if (sym >= SDLK_F1 && sym <= SDLK_F6) {
+                    uint32_t m = sym - SDLK_F1;
+                    viz_config.mode = m;
+                    pushEvent(4, m, 0.0f);
+                } else if (sym == SDLK_1 || sym == SDLK_4 || sym == SDLK_8 || sym == SDLK_9 || sym == SDLK_0) {
+                    if (sym == SDLK_1) { viz_config.mode = 0; pushEvent(4, 0, 0.0f); }
+                    else if (sym == SDLK_4) { viz_config.mode = 3; pushEvent(4, 3, 0.0f); }
+                } else if (sym == SDLK_LEFTBRACKET) {
+                    if (base_octave > 1) {
+                        base_octave--;
+                        viz_config.base_octave = (uint32_t)base_octave;
+                        active_keys.fill(false);
+                        pushEvent(6, (uint32_t)base_octave, 0.0f);
+                    }
+                } else if (sym == SDLK_RIGHTBRACKET) {
+                    if (base_octave < 7) {
+                        base_octave++;
+                        viz_config.base_octave = (uint32_t)base_octave;
+                        active_keys.fill(false);
+                        pushEvent(6, (uint32_t)base_octave, 0.0f);
+                    }
+                } else if (sym == SDLK_MINUS) {
+                    viz_config.height_scale = std::max(0.2f, viz_config.height_scale - 0.15f);
+                } else if (sym == SDLK_EQUALS || sym == SDLK_PLUS) {
+                    viz_config.height_scale = std::min(4.0f, viz_config.height_scale + 0.15f);
+                } else if (sym == SDLK_COMMA) {
+                    viz_config.rotation_speed = std::max(0.0f, viz_config.rotation_speed - 0.1f);
+                } else if (sym == SDLK_PERIOD) {
+                    viz_config.rotation_speed = std::min(2.5f, viz_config.rotation_speed + 0.1f);
+                }
+            } else if (e.type == SDL_KEYUP) {
+                SDL_Keycode sym = e.key.keysym.sym;
+                int midi = sdlKeyToMidi(sym, base_octave);
+                if (midi >= 0) {
+                    if (midi < 128) active_keys[midi] = false;
+                    pushEvent(1, (uint32_t)midi, 0.0f);
+                }
+            } else if (e.type == SDL_MOUSEBUTTONDOWN) {
+                uint16_t mod = SDL_GetModState();
+                bool shift = (mod & KMOD_SHIFT) != 0;
+                int mx = e.button.x;
+                int my = e.button.y;
+                int w, h;
+                SDL_GetWindowSize(window, &w, &h);
+
+                if (e.button.button == SDL_BUTTON_RIGHT || e.button.button == SDL_BUTTON_MIDDLE || (e.button.button == SDL_BUTTON_LEFT && shift)) {
+                    mouse_panning = true;
+                    last_mouse_x = mx;
+                    last_mouse_y = my;
+                } else if (e.button.button == SDL_BUTTON_LEFT) {
+                    // Check top HUD bar click (Mode tabs)
+                    if (show_hud && my < (int)(h * 0.12f)) {
+                        int tab = (mx * 6) / w;
+                        if (tab >= 0 && tab < 6) {
+                            viz_config.mode = tab;
+                            pushEvent(4, tab, 0.0f);
+                        }
+                    } else if (show_hud && my > (int)(h * 0.74f)) {
+                        // Check octave selector indicator pips click
+                        float relNormX = ((float)mx / (float)w) * 2.0f - 1.0f;
+                        float octPipW = 0.052f;
+                        float octGap = 0.010f;
+                        float totalOctW = 7.0f * octPipW + 6.0f * octGap;
+                        float octStartX = -totalOctW * 0.5f;
+
+                        if (my < (int)(h * 0.88f) && relNormX >= octStartX && relNormX <= (octStartX + totalOctW)) {
+                            int clickedOct = 1 + (int)((relNormX - octStartX) / (octPipW + octGap));
+                            clickedOct = std::clamp(clickedOct, 1, 7);
+                            if (clickedOct != base_octave) {
+                                base_octave = clickedOct;
+                                viz_config.base_octave = (uint32_t)base_octave;
+                                active_keys.fill(false);
+                                pushEvent(6, (uint32_t)base_octave, 0.0f);
+                            }
+                        } else {
+                            // Check bottom piano keys click
+                            int lowerBase = (base_octave + 1) * 12;
+                            int upperBase = lowerBase + 12;
+                            int whiteMidis[14] = {
+                                lowerBase+0, lowerBase+2, lowerBase+4, lowerBase+5, lowerBase+7, lowerBase+9, lowerBase+11,
+                                upperBase+0, upperBase+2, upperBase+4, upperBase+5, upperBase+7, upperBase+9, upperBase+11
+                            };
+
+                            float relX = (float)mx / (float)w;
+                            int keyIdx = (int)((relX - 0.02f) / (0.96f / 14.0f));
+                            if (keyIdx >= 0 && keyIdx < 14) {
+                                int clickedMidi = whiteMidis[keyIdx];
+                                if (clickedMidi < 128) {
+                                    active_keys[clickedMidi] = true;
+                                    mouse_held_note = clickedMidi;
+                                    pushEvent(0, (uint32_t)clickedMidi, 0.9f);
+                                }
+                            }
+                        }
+                    } else {
+                        mouse_down = true;
+                        last_mouse_x = mx;
+                        last_mouse_y = my;
+                    }
+                }
+            } else if (e.type == SDL_MOUSEBUTTONUP) {
+                if (mouse_held_note >= 0) {
+                    if (mouse_held_note < 128) active_keys[mouse_held_note] = false;
+                    pushEvent(1, (uint32_t)mouse_held_note, 0.0f);
+                    mouse_held_note = -1;
+                }
+                if (e.button.button == SDL_BUTTON_RIGHT || e.button.button == SDL_BUTTON_MIDDLE || (mouse_panning && e.button.button == SDL_BUTTON_LEFT)) {
+                    mouse_panning = false;
+                }
+                if (e.button.button == SDL_BUTTON_LEFT) {
+                    mouse_down = false;
+                }
+            } else if (e.type == SDL_MOUSEMOTION) {
+                int dx = e.motion.x - last_mouse_x;
+                int dy = e.motion.y - last_mouse_y;
+                last_mouse_x = e.motion.x;
+                last_mouse_y = e.motion.y;
+
+                if (mouse_panning) {
+                    float panSpeed = 0.0018f * cam_distance;
+                    float rightX = std::cos(cam_yaw);
+                    float rightZ = -std::sin(cam_yaw);
+                    cam_target_x -= rightX * (dx * panSpeed);
+                    cam_target_z -= rightZ * (dx * panSpeed);
+                    cam_target_y += dy * panSpeed;
+                    pushCameraUpdateEvents();
+                } else if (mouse_down) {
+                    cam_yaw += dx * 0.008f;
+                    cam_pitch = std::clamp(cam_pitch + dy * 0.008f, 0.05f, 1.50f);
+                    pushCameraUpdateEvents();
+                }
+            } else if (e.type == SDL_MOUSEWHEEL) {
+                cam_distance = std::clamp(cam_distance - e.wheel.y * 1.5f, 3.0f, 60.0f);
+                pushCameraUpdateEvents();
+            }
+        }
+
+        // Dynamic window title updates
+        if (!headless && window && (++title_frame_counter % 20 == 0)) {
+            std::string keyStr = harmonic_data.key_name[0] ? harmonic_data.key_name : "Cn";
+            std::string chordStr = harmonic_data.chord_name[0] ? harmonic_data.chord_name : "None";
+            int consPercent = (int)(harmonic_data.overall_consonance * 100.0f);
+
+            std::string winTitle = std::string("Nova Visualizer | [Mode ") + std::to_string(viz_config.mode + 1) + ": " + getModeName(viz_config.mode) + "] | Key: " + keyStr + " | Chord: " + chordStr + " | Consonance: " + std::to_string(consPercent) + "% | [Cam: Orbit/Pan/Zoom/R] [F1-F6: Modes]";
+            SDL_SetWindowTitle(window, winTitle.c_str());
+        }
+
+        vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+
+        uint32_t imageIndex;
+        VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+            recreateSwapChain();
+            return true;
+        } else if (result != VK_SUCCESS) {
+            return false;
+        }
+
+        vkResetFences(device, 1, &inFlightFences[currentFrame]);
+
+        // Copy spectrum and harmonic data safely
+        std::vector<float> local_bins;
+        NovaVisualizerConfig cfg;
+        NovaHarmonicData local_harm;
+        {
+            std::lock_guard<std::mutex> lock(data_mutex);
+            local_bins = smoothed_bins;
+            cfg = viz_config;
+            local_harm = harmonic_data;
+        }
+
+        // Build dynamic 3D geometry
+        std::vector<VizVertex> vertices;
+        std::vector<uint32_t> indices;
+        buildSceneGeometry(vertices, indices, local_bins, cfg, local_harm);
+        indexCount = (uint32_t)indices.size();
+
+        // Update vertex and index buffers
+        void* data;
+        vkMapMemory(device, vertexBufferMemory, 0, sizeof(VizVertex) * vertices.size(), 0, &data);
+        memcpy(data, vertices.data(), sizeof(VizVertex) * vertices.size());
+        vkUnmapMemory(device, vertexBufferMemory);
+
+        vkMapMemory(device, indexBufferMemory, 0, sizeof(uint32_t) * indices.size(), 0, &data);
+        memcpy(data, indices.data(), sizeof(uint32_t) * indices.size());
+        vkUnmapMemory(device, indexBufferMemory);
+
+        // Update Uniform Buffer (MVP matrix)
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+        UniformBufferObject ubo = {};
+        ubo.model = glm::mat4(1.0f);
+
+        // 3D camera with stationary front view (no auto-spinning) and manual mouse orbit & pan
+        float total_yaw = cam_yaw;
+        float camDist = cam_distance;
+        float camX = cam_target_x + camDist * std::cos(cam_pitch) * std::sin(total_yaw);
+        float camY = cam_target_y + camDist * std::sin(cam_pitch) + cfg.bass_pulse * 0.25f;
+        float camZ = cam_target_z + camDist * std::cos(cam_pitch) * std::cos(total_yaw);
+
+        glm::vec3 eye(camX, camY, camZ);
+        glm::vec3 center(cam_target_x, cam_target_y, cam_target_z);
+        if (cfg.mode == 3) {
+            // Tunnel mode: camera looks down Z axis into tunnel
+            eye = glm::vec3(cam_target_x, cam_target_y, 16.0f);
+            center = glm::vec3(cam_target_x + std::sin(total_yaw * 0.4f) * 1.5f, cam_target_y + std::cos(total_yaw * 0.4f) * 1.5f, -25.0f);
+        }
+        ubo.view = glm::lookAt(eye, center, glm::vec3(0.0f, 1.0f, 0.0f));
+
+        ubo.proj = glm::perspective(glm::radians(48.0f), (float)swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 150.0f);
+        ubo.proj[1][1] *= -1.0f; // Vulkan Y-flip
+        ubo.params = glm::vec4(time, cfg.bass_pulse, (float)cfg.mode, (float)cfg.color_scheme);
+
+        memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
+
+        // Record command buffer
+        vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+        VkCommandBuffer cb = commandBuffers[currentFrame];
+
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        vkBeginCommandBuffer(cb, &beginInfo);
+
+        VkRenderPassBeginInfo renderPassInfo = {};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassInfo.renderPass = renderPass;
+        renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+        renderPassInfo.renderArea.offset = { 0, 0 };
+        renderPassInfo.renderArea.extent = swapChainExtent;
+
+        std::array<VkClearValue, 2> clearValues = {};
+        clearValues[0].color = { { 0.04f, 0.05f, 0.08f, 1.0f } }; // Cyber dark background
+        clearValues[1].depthStencil = { 1.0f, 0 };
+        renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+        renderPassInfo.pClearValues = clearValues.data();
+
+        vkCmdBeginRenderPass(cb, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+        VkViewport viewport = {};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = (float)swapChainExtent.width;
+        viewport.height = (float)swapChainExtent.height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cb, 0, 1, &viewport);
+
+        VkRect2D scissor = {};
+        scissor.offset = { 0, 0 };
+        scissor.extent = swapChainExtent;
+        vkCmdSetScissor(cb, 0, 1, &scissor);
+
+        VkBuffer vBuffers[] = { vertexBuffer };
+        VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(cb, 0, 1, vBuffers, offsets);
+        vkCmdBindIndexBuffer(cb, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+
+        if (indexCount > 0) {
+            vkCmdDrawIndexed(cb, indexCount, 1, 0, 0, 0);
+        }
+
+        vkCmdEndRenderPass(cb);
+        vkEndCommandBuffer(cb);
+
+        // Submit draw
+        VkSubmitInfo submitInfo = {};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
+        VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.pWaitDstStageMask = waitStages;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+
+        VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
+            return false;
+        }
+
+        // Present to screen
+        VkPresentInfoKHR presentInfo = {};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = signalSemaphores;
+
+        VkSwapchainKHR swapChains[] = { swapChain };
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+        presentInfo.pImageIndices = &imageIndex;
+
+        VkResult presentResult = vkQueuePresentKHR(presentQueue, &presentInfo);
+        if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
+            recreateSwapChain();
+        } else if (presentResult != VK_SUCCESS) {
+            return false;
+        }
+
+        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+        return true;
+    }
+
+    void cleanup() {
+        if (device != VK_NULL_HANDLE) {
+            vkDeviceWaitIdle(device);
+
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                if (imageAvailableSemaphores.size() > i && imageAvailableSemaphores[i]) vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+                if (renderFinishedSemaphores.size() > i && renderFinishedSemaphores[i]) vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+                if (inFlightFences.size() > i && inFlightFences[i]) vkDestroyFence(device, inFlightFences[i], nullptr);
+            }
+
+            if (descriptorPool) vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+            for (size_t i = 0; i < uniformBuffers.size(); i++) {
+                if (uniformBuffers[i]) vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+                if (uniformBuffersMemory[i]) vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+            }
+
+            if (vertexBuffer) vkDestroyBuffer(device, vertexBuffer, nullptr);
+            if (vertexBufferMemory) vkFreeMemory(device, vertexBufferMemory, nullptr);
+            if (indexBuffer) vkDestroyBuffer(device, indexBuffer, nullptr);
+            if (indexBufferMemory) vkFreeMemory(device, indexBufferMemory, nullptr);
+
+            cleanupSwapChain();
+
+            if (graphicsPipeline) vkDestroyPipeline(device, graphicsPipeline, nullptr);
+            if (pipelineLayout) vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+            if (descriptorSetLayout) vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+            if (renderPass) vkDestroyRenderPass(device, renderPass, nullptr);
+            if (commandPool) vkDestroyCommandPool(device, commandPool, nullptr);
+
+            vkDestroyDevice(device, nullptr);
+        }
+
+        if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE) {
+            vkDestroySurfaceKHR(instance, surface, nullptr);
+        }
+
+        if (instance != VK_NULL_HANDLE) {
+            vkDestroyInstance(instance, nullptr);
+        }
+
+        if (window) {
+            SDL_DestroyWindow(window);
+            window = nullptr;
+        }
+
+        SDL_Quit();
+    }
+};
+
+extern "C" {
+
+void* nova_visualizer_create(uint32_t width, uint32_t height, const char* title, bool headless) {
+    try {
+        return new VulkanVisualizerApp(width, height, title, headless);
+    } catch (const std::exception& e) {
+        std::cerr << "[NovaVisualizer] Exception in create: " << e.what() << std::endl;
+        return nullptr;
+    }
+}
+
+void nova_visualizer_update_spectrum(void* handle, const float* bins, uint32_t count, const NovaVisualizerConfig* config) {
+    if (!handle || !bins || count == 0) return;
+    auto* app = static_cast<VulkanVisualizerApp*>(handle);
+    app->updateSpectrum(bins, count, config);
+}
+
+void nova_visualizer_update_harmonics(void* handle, const NovaHarmonicData* data) {
+    if (!handle || !data) return;
+    auto* app = static_cast<VulkanVisualizerApp*>(handle);
+    app->updateHarmonics(data);
+}
+
+bool nova_visualizer_render_frame(void* handle) {
+    if (!handle) return false;
+    auto* app = static_cast<VulkanVisualizerApp*>(handle);
+    return app->renderFrame();
+}
+
+void nova_visualizer_poll_events(void* handle, bool* should_quit) {
+    if (!handle || !should_quit) return;
+    auto* app = static_cast<VulkanVisualizerApp*>(handle);
+    *should_quit = app->should_close;
+}
+
+uint32_t nova_visualizer_get_events(void* handle, NovaInputEvent* out_events, uint32_t max_events) {
+    if (!handle || !out_events || max_events == 0) return 0;
+    auto* app = static_cast<VulkanVisualizerApp*>(handle);
+    return app->getEvents(out_events, max_events);
+}
+
+void nova_visualizer_destroy(void* handle) {
+    if (!handle) return;
+    delete static_cast<VulkanVisualizerApp*>(handle);
+}
+
+}

@@ -1,0 +1,21 @@
+{
+  "revision": 210,
+  "device": {
+    "actual_buffer": 131,
+    "analysis_drops": 0,
+    "available": true,
+    "callback_max_us": 1714,
+    "channels": 2,
+    "errors": 0,
+    "format": "f32",
+    "name": "default",
+    "requested_buffer": 256,
+    "sample_rate": 48000
+  },
+  "overloads": 0,
+  "panic": false,
+  "source": "Live X11 Vulkan capture; authenticated control, 3 voices, two modes, resize, panic.",
+  "alsa_underrun_warnings": 177,
+  "audio_release_gate": "FAIL: driver-reported underruns despite device.errors=0; not release-certified.",
+  "visual_scope": "Nonblank native captures in both modes; interactive camera changed during capture. Software fixtures cover fixed default framing."
+}

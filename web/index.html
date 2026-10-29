@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark"><title>Harmonic · Instrument</title>
+  <link rel="stylesheet" href="/hud.css"><link rel="stylesheet" href="/panels.css"><script type="module" src="/js/app.js"></script>
+</head>
+<body>
+<header class="masthead">
+  <div class="brand"><span class="mark" aria-hidden="true">≋</span><div><strong>HARMONIC</strong><small>INSTRUMENT / NOVA</small></div></div>
+  <div class="session"><span class="dot" id="connection-dot"></span><span id="connection">Connecting</span><span class="revision" id="revision">ENGINE —</span></div>
+  <button id="panic" class="panic" title="Immediately silence every source (Escape)">■ PANIC <kbd>ESC</kbd></button>
+</header>
+<div class="health" role="status" aria-live="polite">
+  <span id="audio-status">Audio device —</span><span id="analysis-status">Analysis —</span>
+  <span id="overload-status">Overloads —</span><span id="panic-status">Panic —</span>
+</div>
+<div id="error" role="alert" hidden></div>
+<main>
+  <section class="play panel">
+    <div class="section-heading"><div><span class="eyebrow">01 / PLAY</span><h1>Sound, in context.</h1></div><span class="subtle">One engine. One timeline.</span></div>
+    <div class="play-controls">
+      <label>Instrument <select id="instrument"><option value="0">Wavetable / additive</option><option value="1">Sub bass</option><option value="2">808 kick</option><option value="3">Snare</option><option value="4">Hi-hat</option><option value="5">Bell</option></select></label>
+      <label>Keyboard octave <select id="octave"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select></label>
+      <label>Velocity <input id="velocity" type="range" min="0.05" max="1" step="0.01" value="0.75"></label>
+      <label>Exact frequency <span class="input-unit"><input id="frequency" type="number" min="8" max="8000" step="0.01" value="440"><span>Hz</span></span></label>
+      <button id="hz-play" class="accent" data-live>Hold tone</button>
+    </div>
+    <div id="keyboard" class="keyboard" aria-label="Playable keyboard"></div>
+    <div class="keyboard-footer"><span><kbd>Z S X D C V G B H N J M</kbd> lower · <kbd>Q 2 W 3 E R 5 T 6 Y 7 U I</kbd> upper</span><span id="voices">0 / 16 voices</span></div>
+    <p class="caption">Keyboard and exact-Hz values are input labels, not voice identities. Release remains valid after changing octave or instrument.</p>
+  </section>
+  <div class="workspace">
+    <section class="panel instrument-panel">
+      <div class="section-heading"><div><span class="eyebrow">02 / SHAPE</span><h2>Instrument</h2></div><span class="tag">RUST AUDIO</span></div>
+      <div class="editor-heading"><h3>Wavetable</h3><span id="wave-status" class="subtle">Draw a cycle, then apply</span></div>
+      <canvas id="wavetable" width="512" height="128" aria-label="Draw a wavetable with pointer; preset buttons are keyboard accessible"></canvas>
+      <div class="button-row"><button data-wave="sine">Sine</button><button data-wave="triangle">Triangle</button><button data-wave="saw">Saw</button><button data-wave="square">Square</button><button id="wave-apply" class="accent" data-live>Apply drawing</button></div>
+      <details><summary>Additive partials <span>32 components</span></summary><div id="partials" class="partials"></div><button id="partials-apply" data-live>Apply partials</button><span id="partials-status" class="subtle"></span></details>
+      <div id="sound-controls"></div>
+      <p class="caption">Sound controls show acknowledged values. A changed value is pending until the engine applies it. Modulation limits are validated by Rust.</p>
+    </section>
+    <div class="right-column">
+      <section class="panel context-panel">
+        <div class="section-heading"><div><span class="eyebrow">03 / UNDERSTAND</span><h2>Harmonic context</h2></div><span id="model-version" class="tag">MODEL —</span></div>
+        <div class="field-columns"><div><h3><span class="symbol logical-symbol">□</span> Logical</h3><p class="subtle">Explicit voices &amp; envelopes</p><div id="logical-field" class="field-bars"></div><div id="logical-confidence" class="caption">Waiting for evidence</div><ol id="logical-modes" class="candidates"></ol></div><div><h3><span class="symbol measured-symbol">■</span> Measured</h3><p class="subtle">Actual PCM spectral power</p><div id="measured-field" class="field-bars"></div><div id="measured-confidence" class="caption">Waiting for evidence</div><ol id="measured-modes" class="candidates"></ol></div></div>
+        <div class="legend"><span><i class="swatch compatible"></i>Compatible</span><span><i class="swatch uncertain"></i>Context-dependent</span><span><i class="swatch incompatible"></i>Incompatible</span><span class="cyan">◆ Played</span><span>┄ Projected only</span></div>
+        <details open><summary>Estimated tension → resolution</summary><div id="cadence-traces"></div><div id="cadence-events" class="caption">No completed model-estimated arrivals.</div></details>
+        <p class="caption">Candidates are explainable heuristics, not probabilities. Projected overtones and ratios are illustrations, never measured evidence.</p>
+      </section>
+      <section class="panel source-panel">
+        <div class="section-heading"><div><span class="eyebrow">04 / LISTEN</span><h2>Audio file</h2></div><span class="tag">WAV / FLAC</span></div>
+        <label class="file-drop">Choose a recording<input id="file" type="file" accept=".wav,.flac,audio/wav,audio/flac" data-live><span>256 MiB maximum · 10 minutes · stereo preserved</span></label>
+        <div class="transport"><button id="playback" data-live>Play</button><input id="seek" aria-label="File playback position" type="range" min="0" max="0" step="0.01" value="0" data-live><output id="position">0:00 / 0:00</output></div>
+        <p id="file-status" class="caption">Imported audio contributes measured evidence only. No performed-note transcription is invented.</p>
+      </section>
+      <section class="panel view-panel">
+        <div class="section-heading"><div><span class="eyebrow">05 / SEE</span><h2>Nova presentation</h2></div><span class="tag">NATIVE WINDOW</span></div>
+        <div class="view-select"><label>Presentation<select id="presentation" data-live><option value="false">Precise / luminous</option><option value="true">Immersive / expressive</option></select></label><label class="check"><input id="reduced-motion" type="checkbox" data-live>Reduced motion</label></div>
+        <div id="layers" class="layers"></div><div id="camera-controls"></div><button id="camera-reset" data-live>Reset camera</button>
+        <p class="caption">Both modes display identical facts. Matrix → exact-frequency spectrum → actual waveform. Decorative detail yields to clarity.</p>
+      </section>
+    </div>
+  </div>
+</main>
+<footer><span>HARMONIC / LOCAL INSTRUMENT</span><span>Audio never leaves this machine. Browser controls · Rust state · Nova visuals.</span><button id="reset-analysis" data-live>Reset analysis history</button></footer>
+</body>
+</html>

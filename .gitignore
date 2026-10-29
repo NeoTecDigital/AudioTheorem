@@ -1,1 +1,15 @@
-/target
+/target/
+/.pdl/
+/.agents/
+/.codex/
+/.aws/
+**/__pycache__/
+**/target/
+**/.git/
+*.o
+*.a
+*.so
+core
+core.*
+/extern/Nova/Example/compute
+*.exe

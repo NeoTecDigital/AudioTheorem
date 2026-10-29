@@ -1,0 +1,4 @@
+Excluded from source transfer: nested Git metadata, targets/caches, machine-private state, object/archive/shared libraries.
+Additional unused compiled upstream artifacts:
+extern/Nova/Example/compute
+extern/Nova/Core/components/extern/tinyobj/tools/windows/premake5.exe

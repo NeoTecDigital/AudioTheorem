@@ -1,0 +1,6 @@
+git: /usr/bin/git
+gh: /usr/bin/gh
+CODEX_SANDBOX_NETWORK_DISABLED=1
+fatal: unable to access 'https://github.com/neotecdigital/AudioTheorem.git/': Could not resolve host: github.com
+error connecting to api.github.com
+check your internet connection or https://githubstatus.com

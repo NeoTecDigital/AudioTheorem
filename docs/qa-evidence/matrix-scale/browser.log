@@ -1,0 +1,17 @@
+✔ press/release uses stable voice identity across controls, not pitch labels (1.293242ms)
+✔ typing and pointer sources at the same frequency retain independent voices (0.120646ms)
+✔ focus loss releases every held voice exactly once (0.165551ms)
+✔ disconnect forgets prior identities and reconnect never replays starts (0.112461ms)
+✔ late rejected start cannot delete a newer activation (0.171722ms)
+✔ controls await applied acknowledgement and authoritative snapshot (0.494737ms)
+✔ a disconnected client cannot send and pending commands fail explicitly (0.473647ms)
+✔ waveform history sliders match acknowledged engine view bounds (0.280596ms)
+✔ every packaged browser module parses; no alternate audio or harmonic engine (135.632074ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 147.194614

@@ -1,0 +1,226 @@
+   Compiling nova-daw v0.2.0 (/home/persist/Auto)
+warning: methods `set_band_count` and `set_decay_rate` are never used
+   --> src/dsp/spectrum.rs:124:12
+    |
+ 46 | impl SpectrumAnalyzer {
+    | --------------------- methods in this implementation
+...
+124 |     pub fn set_band_count(&mut self, band_count: usize) {
+    |            ^^^^^^^^^^^^^^
+...
+131 |     pub fn set_decay_rate(&mut self, decay: f32) {
+    |            ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `EngineState` is never constructed
+  --> src/engine/mod.rs:22:12
+   |
+22 | pub struct EngineState {
+   |            ^^^^^^^^^^^
+
+warning: field `sample_rate` is never read
+  --> src/engine/mod.rs:36:9
+   |
+35 | pub struct MusicEngine {
+   |            ----------- field in this struct
+36 |     pub sample_rate: f32,
+   |         ^^^^^^^^^^^
+
+warning: methods `note_off`, `set_wavetable_samples`, `set_wavetable_preset`, `set_harmonics`, and `get_state` are never used
+   --> src/engine/mod.rs:133:12
+    |
+ 50 | impl MusicEngine {
+    | ---------------- methods in this implementation
+...
+133 |     pub fn note_off(&mut self, track_id: usize, raw_note: u8) {
+    |            ^^^^^^^^
+...
+148 |     pub fn set_wavetable_samples(&mut self, samples: Vec<f32>) {
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+153 |     pub fn set_wavetable_preset(&mut self, preset: &str) {
+    |            ^^^^^^^^^^^^^^^^^^^^
+...
+166 |     pub fn set_harmonics(&mut self, harmonics: &[f32]) {
+    |            ^^^^^^^^^^^^^
+...
+227 |     pub fn get_state(&self) -> EngineState {
+    |            ^^^^^^^^^
+
+warning: struct `RingAudioSource` is never constructed
+  --> src/engine/audio_output.rs:14:12
+   |
+14 | pub struct RingAudioSource {
+   |            ^^^^^^^^^^^^^^^
+
+warning: struct `AudioOutputHandle` is never constructed
+  --> src/engine/audio_output.rs:65:12
+   |
+65 | pub struct AudioOutputHandle {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: method `stop` is never used
+  --> src/engine/audio_output.rs:73:12
+   |
+72 | impl AudioOutputHandle {
+   | ---------------------- method in this implementation
+73 |     pub fn stop(&self) {
+   |            ^^^^
+
+warning: function `start_audio_output` is never used
+  --> src/engine/audio_output.rs:87:8
+   |
+87 | pub fn start_audio_output<F>(sample_rate: u32, render_fn: F) -> AudioOutputHandle
+   |        ^^^^^^^^^^^^^^^^^^
+
+warning: field `sample_rate` is never read
+   --> src/engine/sampler.rs:165:5
+    |
+164 | pub struct SamplerVoice {
+    |            ------------ field in this struct
+165 |     sample_rate: f32,
+    |     ^^^^^^^^^^^
+    |
+    = note: `SamplerVoice` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `release` is never used
+   --> src/engine/sampler.rs:200:12
+    |
+175 | impl SamplerVoice {
+    | ----------------- method in this implementation
+...
+200 |     pub fn release(&mut self) {
+    |            ^^^^^^^
+
+warning: struct `TransportState` is never constructed
+  --> src/engine/sequencer.rs:52:12
+   |
+52 | pub struct TransportState {
+   |            ^^^^^^^^^^^^^^
+
+warning: fields `bpm` and `sample_rate` are never read
+  --> src/engine/sequencer.rs:62:9
+   |
+59 | pub struct Sequencer {
+   |            --------- fields in this struct
+...
+62 |     pub bpm: f32,
+   |         ^^^
+...
+65 |     pub sample_rate: f32,
+   |         ^^^^^^^^^^^
+
+warning: methods `set_bpm`, `play`, `pause`, `stop`, `toggle_step`, and `transport_state` are never used
+   --> src/engine/sequencer.rs:100:12
+    |
+ 70 | impl Sequencer {
+    | -------------- methods in this implementation
+...
+100 |     pub fn set_bpm(&mut self, bpm: f32) {
+    |            ^^^^^^^
+...
+105 |     pub fn play(&mut self) {
+    |            ^^^^
+...
+109 |     pub fn pause(&mut self) {
+    |            ^^^^^
+...
+113 |     pub fn stop(&mut self) {
+    |            ^^^^
+...
+119 |     pub fn toggle_step(&mut self, track_id: usize, step_idx: usize, note: Option<u8>, velocity: Option<f32>) {
+    |            ^^^^^^^^^^^
+...
+202 |     pub fn transport_state(&self) -> TransportState {
+    |            ^^^^^^^^^^^^^^^
+
+warning: fields `adsr_config` and `sample_rate` are never read
+   --> src/engine/voice.rs:164:9
+    |
+162 | pub struct PolyphonicSynth {
+    |            --------------- fields in this struct
+163 |     pub voices: Vec<SynthVoice>,
+164 |     pub adsr_config: AdsrConfig,
+    |         ^^^^^^^^^^^
+...
+168 |     sample_rate: f32,
+    |     ^^^^^^^^^^^
+
+warning: methods `note_off` and `set_adsr` are never used
+   --> src/engine/voice.rs:217:12
+    |
+171 | impl PolyphonicSynth {
+    | -------------------- methods in this implementation
+...
+217 |     pub fn note_off(&mut self, note: u8) {
+    |            ^^^^^^^^
+...
+233 |     pub fn set_adsr(&mut self, config: AdsrConfig) {
+    |            ^^^^^^^^
+
+warning: multiple methods are never used
+   --> src/engine/wavetable.rs:30:12
+    |
+ 16 | impl Wavetable {
+    | -------------- methods in this implementation
+...
+ 30 |     pub fn size(&self) -> usize {
+    |            ^^^^
+...
+ 34 |     pub fn set_samples(&mut self, new_samples: Vec<f32>) {
+    |            ^^^^^^^^^^^
+...
+ 58 |     pub fn normalize(&mut self) {
+    |            ^^^^^^^^^
+...
+ 83 |     pub fn generate_triangle(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^
+...
+ 92 |     pub fn generate_sawtooth(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^
+...
+101 |     pub fn generate_square(&mut self, duty: f32) {
+    |            ^^^^^^^^^^^^^^^
+...
+111 |     pub fn generate_harmonics(&mut self, harmonics: &[f32]) {
+    |            ^^^^^^^^^^^^^^^^^^
+
+warning: method `set_sample_rate` is never used
+   --> src/engine/wavetable.rs:165:12
+    |
+152 | impl WavetableOscillator {
+    | ------------------------ method in this implementation
+...
+165 |     pub fn set_sample_rate(&mut self, sample_rate: f32) {
+    |            ^^^^^^^^^^^^^^^
+
+warning: constant `PITCHCLASSES_COUNT` is never used
+  --> src/theory/mod.rs:11:11
+   |
+11 | pub const PITCHCLASSES_COUNT: usize = 12;
+   |           ^^^^^^^^^^^^^^^^^^
+
+warning: constant `PITCHGROUPS_COUNT` is never used
+  --> src/theory/mod.rs:12:11
+   |
+12 | pub const PITCHGROUPS_COUNT: usize = 12;
+   |           ^^^^^^^^^^^^^^^^^
+
+warning: function `interval_base_dissonance` is never used
+   --> src/theory/mod.rs:237:8
+    |
+237 | pub fn interval_base_dissonance(inv: &Interval) -> f32 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `nova-daw` (lib test) generated 20 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 7.37s
+     Running unittests src/lib.rs (target/release/deps/nova_daw-d120a5876cd21003)
+
+running 1 test
+precise CPU geometry p95=1246us p99=1407us (fixture, not GPU)
+immersive CPU geometry p95=1716us p99=1799us (fixture, not GPU)
+test visualizer::scene::fixtures::geometry_cpu_budget ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 96 filtered out; finished in 0.95s
+

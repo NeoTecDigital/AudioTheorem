@@ -1,0 +1,10 @@
+   Compiling nova-daw v0.2.0 (/home/persist/Auto)
+    Finished `release` profile [optimized + debuginfo] target(s) in 7.26s
+     Running tests/history_stream.rs (target/release/deps/history_stream-289f7e6296cd4c9f)
+
+running 1 test
+32s virtual analysis + history: 1500 frames, p95=1932us p99=2214us
+test history_analysis_budget ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 2.16s
+
