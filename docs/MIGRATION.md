@@ -15,12 +15,14 @@
 | root build.rs prebuilt archive | source compilation and shader embedding into OUT_DIR | target/nova_lib is not consulted |
 | AudioTheorem runtime/graphics pulled into theory usage | optional runtime feature; root disables default features | Upstream runtime default retained for its own users |
 
-Root `.git` is unusable. Nested dependency repositories retain their existing metadata and any
-pre-existing unrelated modifications; no branches, commits or publication were fabricated.
+The initial workspace's root Git metadata was unusable. Nested dependency repositories retained
+their existing metadata and modifications during development; publication/restoration is recorded below.
 
 ## AudioTheorem repository integration
-Publication uses a fresh checkout of `NeoTecDigital/AudioTheorem` on local `main`; the original
-workspace's unusable metadata is not replaced. The pre-existing `main` and `master` have unrelated
+Publication uses a fresh checkout of `NeoTecDigital/AudioTheorem` on local `main`. After the source
+integration commit, its verified fetched Git metadata was restored to the original workspace,
+which now also tracks `origin/main` on local `main`. No history was invented. The pre-existing
+`main` and `master` have unrelated
 histories. A local merge preserves both, before a separate current-application source sync retires
 the old root EGUI/MIDI application and its unused icon. All retired files remain in Git history.
 The original master's README identified its license as **Ancillary**; this migration does not grant

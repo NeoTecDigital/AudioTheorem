@@ -244,3 +244,18 @@ Human review must distinguish logical/measured/projected facts and cadence witho
 - Publication preparation complete: retain old remote master9fd702026a0aefec6216cf7a0bf42906268f2332
   as legacy-master, push integration main non-forced, then fast-forward master. Restore the verified
   fetched Git metadata to the originally metadata-less workspace after integration is committed.
+
+### Publication outcome — verified upstream
+- Implemented source commit `3dece154e5e15f055ca579c66a7d429116b5149a` was pushed to
+  `NeoTecDigital/AudioTheorem/main`; `master` was fast-forwarded to that same commit.
+- Old master is preserved exactly as upstream `legacy-master` at
+  `9fd702026a0aefec6216cf7a0bf42906268f2332`. Creation and master advancement used one atomic push;
+  neither existing branch was force-pushed. Both original histories remain ancestors of the new head.
+- Verified the three upstream ref SHAs with Git, and main independently with the GitHub API.
+  Subsequent documentation-only receipt updates advance main/master together, leaving legacy fixed.
+- Workspace Git metadata is restored from the verified checkout; local branch remains `main`
+  tracking `origin/main`. Desktop libsecret credential storage stalled before publication;
+  a per-command authenticated gh credential helper completed the push without changing global config.
+- Requested visual features and source synchronization are complete. Audio release certification
+  remains blocked by the recorded ALSA underruns and outstanding soak/performance gates; do not
+  confuse publication of the implementation candidate with certification of the entire release.
