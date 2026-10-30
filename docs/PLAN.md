@@ -478,3 +478,14 @@ Human review must distinguish logical/measured/projected facts and cadence witho
   callback p99=493us. Neither metric substitutes for GPU timing or the failed live audio soak gate.
 - Expected UI deliverables achieved, with stated menu breadth. Hardware release certification is
   intentionally still open with explicit failures/action items above, not reported as complete.
+
+### User-authorized publication — 2026-10-29
+- User requested "push to git" after the mesh/menu candidate was committed locally.
+- Expected: publish the two completed feature commits to NeoTecDigital/AudioTheorem, keep main and
+  master aligned using the previously authorized workflow, and preserve legacy-master unchanged.
+- Actual: fetched all three remote refs, confirmed main/master at94462a5 were ancestors of local
+  main, then atomically fast-forwarded both to c543f55f57566a1ddf496ce838b97ba07ac483ad.
+  `git ls-remote` verified both feature heads; legacy-master remains exactly
+  9fd702026a0aefec6216cf7a0bf42906268f2332. No force push or history replacement was used.
+- This publication ledger accompanies the code as a documentation-only fast-forward. Prior test
+  evidence and the failed/open live audio gates are unchanged; publication is not release certification.

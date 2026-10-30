@@ -21,7 +21,8 @@
   soak, GPU/latency measurement and independent visual acceptance remain outstanding.
 - Source/projection/logical separation is unchanged; meshes interpolate geometry only and do not
   bridge missing source tiles or output epochs. Logo bytes match the supplied asset exactly.
-- Evidence: `docs/qa-evidence/mesh-menu/`; implementation on local main only, no new push.
+- Evidence: `docs/qa-evidence/mesh-menu/`; published to origin main/master by explicit user request.
+  See the publication record in `docs/PLAN.md`; audio release gates remain failed/open.
 
 
 ## Current revision — engine-recorded PCM and spectrum waterfalls
