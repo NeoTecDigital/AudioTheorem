@@ -1,8 +1,8 @@
 //! Native-only immutable history views. These are not duplicated into browser JSON.
 use super::WavePoint;
 
-pub const HISTORY_ROWS: usize = 48;
-pub const HISTORY_BANDS: usize = 160;
+pub const HISTORY_ROWS: usize = 192;
+pub const HISTORY_BANDS: usize = 320;
 pub const HISTORY_PCM_POINTS: usize = 3072;
 
 #[derive(Clone, Debug, Default)]

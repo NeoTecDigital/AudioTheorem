@@ -18,7 +18,7 @@ pub fn spectrum(mesh: &mut Mesh, state: &Snapshot, frame: &AnalysisFrame) {
             .map(|pc| compatibility(frame.measured.compatibility[pc], frame.measured.confidence))
             .unwrap_or(MUTED);
         if let Some(prior) = previous {
-            mesh.line(prior, top, 0.025, color);
+            mesh.stroke(prior, top, 1.8, color);
         }
         let mut fill = color;
         fill[3] = 0.15;

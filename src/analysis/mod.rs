@@ -1,11 +1,13 @@
 //! Off-audio-thread measured/logical analysis. Projections never enter evidence.
 mod cadence;
+pub mod compass;
 pub mod config;
 mod contributions;
 mod field;
 mod history;
 mod layer;
 mod roots;
+pub mod source;
 mod spectrum;
 #[cfg(test)]
 mod tests;

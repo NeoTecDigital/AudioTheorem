@@ -16,12 +16,19 @@ pub fn draw(
     input: &Status<'_>,
     size: [u32; 2],
     history: &mut CadenceHistory,
+    navigation: &crate::native_input::timeline::Timeline,
 ) {
     let start = mesh.vertices.len();
-    let width = 720.0 * size[0].max(1) as f32 / size[1].max(1) as f32;
-    let width = width.max(960.0);
+    let width = crate::native_input::timeline::hud_width(size);
     mesh.rect(0.0, 614.0, width, 106.0, 0.0, [0.012, 0.024, 0.032, 0.94]);
-    mesh.rect(0.0, 0.0, width, 110.0, 0.0, [0.012, 0.024, 0.032, 0.94]);
+    mesh.rect(
+        0.0,
+        0.0,
+        width,
+        if state.asset.is_some() { 194.0 } else { 110.0 },
+        0.0,
+        [0.012, 0.024, 0.032, 0.94],
+    );
     heading(mesh, state, width);
     keyboard(mesh, input);
     legend(mesh, width);
@@ -37,11 +44,22 @@ pub fn draw(
         );
         cadence(mesh, state, history);
     }
+    super::compass::draw(mesh, state, navigation);
+    super::song::hud(mesh, state, navigation, width);
+    map_screen(mesh, start, size);
+}
+
+fn map_screen(mesh: &mut Mesh, start: usize, size: [u32; 2]) {
+    let width = crate::native_input::timeline::hud_width(size);
     // Negative W is the explicit ABI/shader screen-space marker. No camera matrix applies.
+    let height = crate::native_input::timeline::hud_height(size);
     for vertex in &mut mesh.vertices[start..] {
+        if vertex.position[1] >= 330.0 {
+            vertex.position[1] += height - 720.0;
+        }
         vertex.position = [
             vertex.position[0] / width * 2.0 - 1.0,
-            1.0 - vertex.position[1] / 360.0,
+            1.0 - vertex.position[1] / height * 2.0,
             0.0,
             -1.0,
         ];
@@ -217,4 +235,17 @@ fn cadence(mesh: &mut Mesh, state: &Snapshot, history: &mut CadenceHistory) {
     mesh.map_since(start, |[x, y, z]| {
         [18.0 + (x + 8.4) * 38.0, 62.0 + (y + 4.6) * 27.0, z]
     });
+}
+
+pub fn budget_warning(mesh: &mut Mesh, size: [u32; 2]) {
+    let start = mesh.vertices.len();
+    let width = crate::native_input::timeline::hud_width(size);
+    mesh.text(
+        "VISUAL LIMIT / REDUCING DETAIL",
+        width - 240.0,
+        680.0,
+        1.05,
+        [0.94, 0.63, 0.18, 1.0],
+    );
+    map_screen(mesh, start, size);
 }

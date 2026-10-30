@@ -11,7 +11,7 @@ public:
     Nova(const Nova&) = delete;
     Nova& operator=(const Nova&) = delete;
     nova::Events poll();
-    bool draw(std::span<const nova::Vertex>, const nova::Uniform&);
+    bool draw(nova::Geometry, const nova::Uniform&);
 private:
     std::unique_ptr<nova::Context> context;
 };

@@ -1,7 +1,9 @@
 //! Version 1: sample-clocked authoritative wire and worker contracts.
 use serde::{Deserialize, Serialize};
 mod history;
+mod song;
 pub use history::*;
+pub use song::*;
 
 pub const VERSION: u32 = 1;
 pub const VOICES: usize = 16;
@@ -42,6 +44,9 @@ pub enum Action {
     },
     Seek {
         seconds: f64,
+    },
+    Transport {
+        transport: SongTransport,
     },
     ResetAnalysis,
     View {
@@ -202,6 +207,9 @@ pub struct Snapshot {
     pub device: DeviceStatus,
     pub asset: Option<u64>,
     pub playback_seconds: f64,
+    pub playback_frame: u64,
+    #[serde(skip)]
+    pub song: Option<std::sync::Arc<SongIndex>>,
     pub duration_seconds: f64,
     pub playing: bool,
     pub panic: bool,

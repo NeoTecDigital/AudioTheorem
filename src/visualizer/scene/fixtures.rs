@@ -26,6 +26,8 @@ pub(super) fn snapshot() -> Snapshot {
         },
         asset: None,
         playback_seconds: 0.0,
+        playback_frame: 0,
+        song: None,
         duration_seconds: 0.0,
         playing: false,
         panic: false,
@@ -168,13 +170,49 @@ fn warm_streams(scene: &mut Scene, state: &mut Snapshot) {
     }
 }
 
-fn svg(vertices: &[Vertex], transform: [f32; 16]) -> String {
+pub(super) fn svg(
+    vertices: &[Vertex],
+    strokes: &[crate::visualizer::mesh::Stroke],
+    transform: [f32; 16],
+) -> String {
     let mut output = String::from("<svg xmlns='http://www.w3.org/2000/svg' width='1920' height='1080'><rect width='1920' height='1080' fill='#030507'/>");
-    for triangle in vertices.as_chunks::<3>().0 {
+    for triangle in vertices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter(|t| t[0].position[3] >= 0.0)
+    {
+        polygon(&mut output, triangle, transform);
+    }
+    for stroke in strokes {
+        svg_stroke(&mut output, stroke, transform);
+    }
+    for triangle in vertices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter(|t| t[0].position[3] < 0.0)
+    {
         polygon(&mut output, triangle, transform);
     }
     output.push_str("<text x='1100' y='1068' fill='gray' font-size='10'>DETERMINISTIC GEOMETRY FIXTURE - SOFTWARE PREVIEW, NOT GPU VERIFICATION</text></svg>");
     output
+}
+
+fn svg_stroke(output: &mut String, stroke: &crate::visualizer::mesh::Stroke, transform: [f32; 16]) {
+    let project = |p: [f32; 4]| {
+        let p = [p[0], p[1], p[2], 1.0];
+        let clip: [f32; 4] =
+            std::array::from_fn(|r| (0..4).map(|c| transform[c * 4 + r] * p[c]).sum());
+        [
+            (clip[0] / clip[3] + 1.0) * 960.0,
+            (clip[1] / clip[3] + 1.0) * 540.0,
+        ]
+    };
+    let [a, b] = [project(stroke.a), project(stroke.b)];
+    let c = stroke.color;
+    output.push_str(&format!("<line x1='{}' y1='{}' x2='{}' y2='{}' stroke='rgb({},{},{})' stroke-opacity='{}' stroke-width='{}' stroke-linecap='round'/>",
+        a[0],a[1],b[0],b[1],(c[0]*255.0) as u8,(c[1]*255.0) as u8,(c[2]*255.0) as u8,c[3],stroke.a[3]));
 }
 
 fn polygon(output: &mut String, triangle: &[Vertex], transform: [f32; 16]) {
@@ -232,7 +270,11 @@ fn both_modes_build_bounded_finite_identical_facts() {
             );
             std::fs::write(
                 file,
-                svg(vertices, Camera.matrix(&snapshot.view, 1920, 1080)),
+                svg(
+                    &scene.mesh.vertices,
+                    &scene.mesh.strokes,
+                    Camera.matrix(&snapshot.view, 1920, 1080),
+                ),
             )
             .unwrap();
         }

@@ -54,7 +54,8 @@ pub fn draw(mesh: &mut Mesh, state: &Snapshot, frame: &AnalysisFrame) {
         return;
     }
     labels::draw(mesh, state, history);
-    for row in &history.spectrum {
+    let stride = if state.asset.is_some() { 4 } else { 1 };
+    for row in history.spectrum.iter().step_by(stride) {
         spectrum::row(mesh, state, history, row);
     }
     for row in &history.pcm {

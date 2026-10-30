@@ -55,8 +55,8 @@ struct Stages {
 };
 struct PipelineState {
     VkVertexInputBindingDescription binding{0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX};
-    std::array<VkVertexInputAttributeDescription, 2> attributes{{
-        {0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0}, {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 16}}};
+    std::array<VkVertexInputAttributeDescription, 3> attributes{{
+        {0, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 0}, {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 16}, {2, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 32}}};
     VkPipelineVertexInputStateCreateInfo vertex{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     VkPipelineInputAssemblyStateCreateInfo assembly{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
@@ -100,5 +100,10 @@ void init_pipeline(Context& c, Pipeline shaders) {
     info.pMultisampleState = &state.multisample; info.pColorBlendState = &state.color;
     info.pDynamicState = &state.dynamic; info.layout = c.layout; info.renderPass = c.pass;
     check(vkCreateGraphicsPipelines(c.device, VK_NULL_HANDLE, 1, &info, nullptr, &c.pipeline), "Nova pipeline");
+    Stages strokes(c); strokes.init(Pipeline{shaders.stroke_vertex, shaders.stroke_fragment, {}, {}});
+    state.binding.stride = sizeof(Stroke); state.binding.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+    state.vertex.vertexAttributeDescriptionCount = 3;
+    info.pStages = strokes.info.data();
+    check(vkCreateGraphicsPipelines(c.device, VK_NULL_HANDLE, 1, &info, nullptr, &c.stroke_pipeline), "Nova stroke pipeline");
 }
 }

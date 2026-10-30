@@ -1,0 +1,863 @@
+   Compiling nova-daw v0.2.0 (/home/persist/Auto)
+warning: associated function `from_waveform` is never used
+  --> src/visualizer/scene/selection.rs:11:12
+   |
+10 | impl Range {
+   | ---------- associated function in this implementation
+11 |     pub fn from_waveform(points: &[WavePoint]) -> Option<Self> {
+   |            ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `set_band_count` and `set_decay_rate` are never used
+   --> src/dsp/spectrum.rs:125:12
+    |
+ 46 | impl SpectrumAnalyzer {
+    | --------------------- methods in this implementation
+...
+125 |     pub fn set_band_count(&mut self, band_count: usize) {
+    |            ^^^^^^^^^^^^^^
+...
+132 |     pub fn set_decay_rate(&mut self, decay: f32) {
+    |            ^^^^^^^^^^^^^^
+
+warning: struct `EngineState` is never constructed
+  --> src/engine/mod.rs:24:12
+   |
+24 | pub struct EngineState {
+   |            ^^^^^^^^^^^
+
+warning: field `sample_rate` is never read
+  --> src/engine/mod.rs:38:9
+   |
+37 | pub struct MusicEngine {
+   |            ----------- field in this struct
+38 |     pub sample_rate: f32,
+   |         ^^^^^^^^^^^
+
+warning: methods `note_off`, `set_wavetable_samples`, `set_wavetable_preset`, `set_harmonics`, and `get_state` are never used
+   --> src/engine/mod.rs:191:12
+    |
+ 52 | impl MusicEngine {
+    | ---------------- methods in this implementation
+...
+191 |     pub fn note_off(&mut self, track_id: usize, raw_note: u8) {
+    |            ^^^^^^^^
+...
+206 |     pub fn set_wavetable_samples(&mut self, samples: Vec<f32>) {
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+211 |     pub fn set_wavetable_preset(&mut self, preset: &str) {
+    |            ^^^^^^^^^^^^^^^^^^^^
+...
+228 |     pub fn set_harmonics(&mut self, harmonics: &[f32]) {
+    |            ^^^^^^^^^^^^^
+...
+293 |     pub fn get_state(&self) -> EngineState {
+    |            ^^^^^^^^^
+
+warning: struct `RingAudioSource` is never constructed
+  --> src/engine/audio_output.rs:14:12
+   |
+14 | pub struct RingAudioSource {
+   |            ^^^^^^^^^^^^^^^
+
+warning: struct `AudioOutputHandle` is never constructed
+  --> src/engine/audio_output.rs:69:12
+   |
+69 | pub struct AudioOutputHandle {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: method `stop` is never used
+  --> src/engine/audio_output.rs:77:12
+   |
+76 | impl AudioOutputHandle {
+   | ---------------------- method in this implementation
+77 |     pub fn stop(&self) {
+   |            ^^^^
+
+warning: function `start_audio_output` is never used
+  --> src/engine/audio_output.rs:91:8
+   |
+91 | pub fn start_audio_output<F>(sample_rate: u32, render_fn: F) -> AudioOutputHandle
+   |        ^^^^^^^^^^^^^^^^^^
+
+warning: field `sample_rate` is never read
+   --> src/engine/sampler.rs:177:5
+    |
+176 | pub struct SamplerVoice {
+    |            ------------ field in this struct
+177 |     sample_rate: f32,
+    |     ^^^^^^^^^^^
+    |
+    = note: `SamplerVoice` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `release` is never used
+   --> src/engine/sampler.rs:212:12
+    |
+187 | impl SamplerVoice {
+    | ----------------- method in this implementation
+...
+212 |     pub fn release(&mut self) {
+    |            ^^^^^^^
+
+warning: struct `TransportState` is never constructed
+  --> src/engine/sequencer.rs:52:12
+   |
+52 | pub struct TransportState {
+   |            ^^^^^^^^^^^^^^
+
+warning: fields `bpm` and `sample_rate` are never read
+  --> src/engine/sequencer.rs:62:9
+   |
+59 | pub struct Sequencer {
+   |            --------- fields in this struct
+...
+62 |     pub bpm: f32,
+   |         ^^^
+...
+65 |     pub sample_rate: f32,
+   |         ^^^^^^^^^^^
+
+warning: methods `set_bpm`, `play`, `pause`, `stop`, `toggle_step`, and `transport_state` are never used
+   --> src/engine/sequencer.rs:100:12
+    |
+ 70 | impl Sequencer {
+    | -------------- methods in this implementation
+...
+100 |     pub fn set_bpm(&mut self, bpm: f32) {
+    |            ^^^^^^^
+...
+105 |     pub fn play(&mut self) {
+    |            ^^^^
+...
+109 |     pub fn pause(&mut self) {
+    |            ^^^^^
+...
+113 |     pub fn stop(&mut self) {
+    |            ^^^^
+...
+119 |     pub fn toggle_step(
+    |            ^^^^^^^^^^^
+...
+248 |     pub fn transport_state(&self) -> TransportState {
+    |            ^^^^^^^^^^^^^^^
+
+warning: fields `adsr_config` and `sample_rate` are never read
+   --> src/engine/voice.rs:164:9
+    |
+162 | pub struct PolyphonicSynth {
+    |            --------------- fields in this struct
+163 |     pub voices: Vec<SynthVoice>,
+164 |     pub adsr_config: AdsrConfig,
+    |         ^^^^^^^^^^^
+...
+168 |     sample_rate: f32,
+    |     ^^^^^^^^^^^
+
+warning: methods `note_off` and `set_adsr` are never used
+   --> src/engine/voice.rs:217:12
+    |
+171 | impl PolyphonicSynth {
+    | -------------------- methods in this implementation
+...
+217 |     pub fn note_off(&mut self, note: u8) {
+    |            ^^^^^^^^
+...
+241 |     pub fn set_adsr(&mut self, config: AdsrConfig) {
+    |            ^^^^^^^^
+
+warning: multiple methods are never used
+   --> src/engine/wavetable.rs:30:12
+    |
+ 16 | impl Wavetable {
+    | -------------- methods in this implementation
+...
+ 30 |     pub fn size(&self) -> usize {
+    |            ^^^^
+...
+ 34 |     pub fn set_samples(&mut self, new_samples: Vec<f32>) {
+    |            ^^^^^^^^^^^
+...
+ 58 |     pub fn normalize(&mut self) {
+    |            ^^^^^^^^^
+...
+ 83 |     pub fn generate_triangle(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^
+...
+ 92 |     pub fn generate_sawtooth(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^
+...
+101 |     pub fn generate_square(&mut self, duty: f32) {
+    |            ^^^^^^^^^^^^^^^
+...
+111 |     pub fn generate_harmonics(&mut self, harmonics: &[f32]) {
+    |            ^^^^^^^^^^^^^^^^^^
+
+warning: method `set_sample_rate` is never used
+   --> src/engine/wavetable.rs:169:12
+    |
+156 | impl WavetableOscillator {
+    | ------------------------ method in this implementation
+...
+169 |     pub fn set_sample_rate(&mut self, sample_rate: f32) {
+    |            ^^^^^^^^^^^^^^^
+
+warning: constant `PITCHCLASSES_COUNT` is never used
+  --> src/theory/mod.rs:13:11
+   |
+13 | pub const PITCHCLASSES_COUNT: usize = 12;
+   |           ^^^^^^^^^^^^^^^^^^
+
+warning: constant `PITCHGROUPS_COUNT` is never used
+  --> src/theory/mod.rs:14:11
+   |
+14 | pub const PITCHGROUPS_COUNT: usize = 12;
+   |           ^^^^^^^^^^^^^^^^^
+
+warning: function `interval_base_dissonance` is never used
+   --> src/theory/mod.rs:239:8
+    |
+239 | pub fn interval_base_dissonance(inv: &Interval) -> f32 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `nova-daw` (lib test) generated 21 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.97s
+     Running unittests src/lib.rs (target/debug/deps/nova_daw-661e857547a8a9c5)
+
+running 125 tests
+test analysis::contributions::tests::projected_relationships_keep_exact_ratios_and_explicit_status ... ok
+test analysis::field::tests::fourth_power_weighting_and_scale_invariance ... ok
+test analysis::contributions::tests::imported_audio_bands_never_gain_performer_identity ... ok
+test analysis::field::tests::silence_and_chromatic_are_neutral_without_default_key ... ok
+test analysis::compass::tests::circle_and_tetrachords_preserve_all_transpositions ... ok
+test analysis::history::stream::tests::native_history_does_not_multiply_browser_json_payload ... ok
+test analysis::roots::tests::no_default_root_and_all_competing_modes_retained ... ok
+test analysis::history::tests::signed_stereo_history_and_minmax_are_actual_samples ... ok
+test analysis::roots::tests::root_score_uses_explainable_weights_times_raw_group_support ... ok
+test analysis::roots::tests::unfinished_hypothesis_never_reinforces_arrivals ... ok
+test analysis::source::tests::missing_tiles_remain_missing_and_snapshots_share_storage ... ok
+test analysis::history::view::tests::scrubbed_close_zoom_is_signed_sample_exact ... ok
+test analysis::history::stream::tests::zoom_is_raw_pcm_and_unavailable_history_is_empty ... ok
+test analysis::history::tests::compact_analysis_history_prunes_at_exact_sample_boundary ... ok
+test analysis::history::tests::rings_are_bounded_and_clear_drops_old_epoch ... ok
+test analysis::cadence::tests::silence_and_unresolved_tension_never_declare_arrival ... ok
+test analysis::history::view::tests::expired_or_unrecorded_history_never_becomes_fake_zero_samples ... ok
+test analysis::cadence::tests::resolution_requires_tension_drop_and_half_second_support ... ok
+test analysis::tests::out_of_matrix_spectrum_keeps_energy_without_edge_clamping ... ok
+test analysis::theory::tests::exact_detuning_and_outside_matrix_are_not_clamped ... ok
+test analysis::history::stream::tests::history_retains_different_measured_frames_not_copies_of_current ... ok
+test analysis::theory::tests::all_modes_are_ordered_from_the_major_tonic ... ok
+test analysis::source::tests::source_stereo_extrema_are_exact_and_cancellable ... ok
+test analysis::spectrum::tests::region_weights_form_partition_of_unity ... ok
+test analysis::history::view::tests::medium_zoom_minmax_uses_only_selected_interval ... ok
+test audio::tests::file_decode_preserves_stereo_and_rejects_bad_input ... ok
+test audio::tests::finite_controls_and_arrays_are_validated_without_coercion ... ok
+test analysis::theory::tests::every_membership_and_transposition_matches_diatonic_intervals ... ok
+test analysis::history::stream::tests::row_and_band_limits_are_bounded_and_selection_never_invents_timestamps ... ok
+test analysis::tests::history_view_clamps_inputs_without_resetting_view_on_analysis_gap ... ok
+test analysis::tests::waveform_fidelity_uses_signed_stereo_not_spectral_bins ... ok
+test analysis::tests::epoch_reset_does_not_join_disjoint_pcm_or_temporal_evidence ... ok
+test analysis::history::stream::tests::pcm_stream_covers_every_selected_sample_with_exact_signed_stereo_extrema ... ok
+test analysis::cadence::tests::holding_unresolved_note_cannot_resolve_itself_by_context_adaptation ... ok
+test engine::voice::tests::test_filter_dynamic_resonance_change ... ok
+test engine::voice::tests::test_synth_panic ... ok
+test engine::voice::tests::test_filter_resonance_stability ... ok
+test engine::voice::tests::test_voice_auto_release ... ok
+test native_input::tests::keyboard_matches_browser_hz_and_release_survives_octave_instrument_modifiers ... ok
+test engine::tests::test_engine_drum_samplers ... ok
+test analysis::spectrum::tests::stereo_antiphase_survives_and_power_is_not_tripled ... ok
+test engine::tests::test_engine_render_block_and_spectrum ... ok
+test audio::tests::waveform_and_partials_are_bounded_periodic_tables ... ok
+test analysis::history::view::tests::wide_zoom_merges_cached_extrema_and_exact_edge_fragments ... ok
+test analysis::spectrum::tests::low_frequency_confidence_does_not_claim_sub_window_precision ... ok
+test native_input::timeline::tests::narrow_hud_hit_testing_keeps_top_and_bottom_anchored_without_stretch ... ok
+test analysis::tests::selecting_history_view_changes_only_waveform_window ... ok
+test server::assets::tests::traversal_is_not_an_asset ... ok
+test server::http::tests::import_checks_content_not_server_paths ... ok
+test server::http::tests::streamed_import_enforces_actual_bytes_not_declared_length ... ok
+test server::security::tests::bounded_client_slots_never_claim_native ... ok
+test server::security::tests::credentials_require_exact_bearer ... ok
+test server::security::tests::origins_and_duplicate_host_are_exact ... ok
+test server::socket::tests::rate_limit_is_bounded ... ok
+test analysis::source::tests::source_spectrum_uses_real_stereo_and_does_not_invent_performed_notes ... ok
+test runtime::source::tests::source_index_is_latest_only_survives_seek_and_stops ... ok
+test analysis::spectrum::tests::crossover_tones_conserve_power_across_resolutions ... ok
+test theory::tests::test_144_pitches_coverage ... ok
+test theory::tests::test_accidental_fs_major_relational_harmony ... ok
+test theory::tests::test_frequency_propagation ... ok
+test theory::tests::test_harmonic_analyzer_triad_consonance ... ok
+test theory::tests::test_harmonic_analyzer_tritone_dissonance ... ok
+test theory::tests::test_idle_no_default_key ... ok
+test visualizer::camera::acknowledgement_tests::requested_camera_does_not_mutate_acknowledged_view ... ok
+test visualizer::camera::tests::finite_projection_for_minimized_and_extreme_camera ... ok
+test visualizer::mesh::tests::mesh_capacity_never_overruns_gpu_upload ... ok
+test visualizer::mesh::tests::neutral_evidence_has_no_false_compatibility_color ... ok
+test visualizer::nova_ffi::tests::abi_layout_is_versioned ... ok
+test visualizer::nova_ffi::tests::abi_rejects_null_overflow_and_nonfinite ... ok
+test visualizer::nova_ffi::tests::failed_create_clears_handle_and_safe_destroy_null ... ok
+test visualizer::scene::emission::tests::absolute_power_controls_radius_intensity_size_and_density_without_quiet_floor ... ok
+test visualizer::scene::emission::tests::deterministic_emission_disc_stays_bounded_and_silent_power_draws_nothing ... ok
+test visualizer::scene::field::tests::measured_cell_and_emitter_share_the_same_absolute_power_response ... ok
+test audio::tests::panic_cancels_future_starts_and_silences_filter_tail ... ok
+test visualizer::scene::fixtures::geometry_cpu_budget ... ignored, release-only CPU geometry diagnostic, not GPU frame timing
+test analysis::tests::silence_suppresses_measured_cadence_despite_long_window_tail ... ok
+test visualizer::scene::matrix_layout::tests::detuned_origins_move_continuously_with_cents_and_wrap_only_at_row_boundary ... ok
+test audio::tests::brief_notes_retain_logical_energy_before_end_of_block ... ok
+test visualizer::scene::matrix_layout::tests::table_doubles_both_dimensions_about_its_center_without_moving_depth ... ok
+test visualizer::scene::matrix_layout::tests::voice_origin_matches_transformed_cell_for_every_supported_note ... ok
+test visualizer::scene::matrix_layout::tests::enlarged_table_and_reflowed_annotations_clear_the_hud_in_both_modes ... ok
+test visualizer::scene::particles::tests::measured_events_spread_with_power_but_keep_exact_spectral_destination ... ok
+test analysis::tests::discontinuities_clear_history_and_cadence_and_report_gap ... ok
+test visualizer::scene::particles::tests::paused_audio_freezes_particles_and_gaps_clear_stream_history ... ok
+test visualizer::scene::particles::tests::projection_cannot_claim_measured_height_or_pcm_and_processing_has_no_path ... ok
+test visualizer::scene::particles::tests::selected_history_rejects_unrelated_temporal_links_without_hiding_spectrum_stream ... ok
+test visualizer::scene::selection::tests::scrubbing_axes_show_actual_selected_samples_not_now ... ok
+test visualizer::scene::selection::tests::selected_range_rejects_offscreen_events_instead_of_clamping ... ok
+test visualizer::scene::song::tests::dense_song_scene_budget ... ignored, release-only dense source scene CPU timing, not GPU or audio soak
+test visualizer::scene::particles::tests::stream_reaches_exact_frequency_and_measured_height_through_real_depth ... ok
+test audio::tests::client_disconnect_watermark_does_not_cut_new_generation ... ok
+test visualizer::scene::spatial::tests::between_bin_endpoint_lies_on_rendered_log_frequency_profile ... ok
+test visualizer::scene::tests::matrix_mapping_keeps_out_of_range_frequencies_outside ... ok
+test visualizer::scene::tests::missed_budget_reduces_decorations_then_recovers ... ok
+test visualizer::scene::tests::spectrum_coordinates_are_not_pcm_indices ... ok
+test native_input::timeline::tests::drag_pauses_once_previews_without_seek_then_commits_asset_transaction ... ok
+test visualizer::scene::waterfall::tests::compact_pcm_stays_beside_spectrum_and_shares_its_depth_clock ... ok
+test visualizer::scene::song::tests::missing_source_tiles_never_become_silent_or_repeated_rows ... ok
+test visualizer::scene::waterfall::tests::changing_the_live_spectrum_never_rewrites_historical_ridges ... ok
+test native_input::timeline::tests::paused_drag_stays_paused_cancel_and_replace_never_resume ... ok
+test visualizer::scene::waterfall::tests::signed_stereo_shapes_and_envelopes_preserve_negative_values ... ok
+test visualizer::scene::waterfall::tests::temporal_links_use_actual_overlapping_history_not_frequency_indices ... ok
+test visualizer::scene::waterfall::tests::no_lines_bridge_pcm_gaps_and_no_old_epoch_is_drawn ... ok
+test analysis::tests::noise_is_finite_and_no_default_cadence_is_declared ... ok
+test audio::tests::bus_processing_is_explicit_and_not_assigned_to_one_source ... ok
+test visualizer::scene::waterfall::tests::default_history_layout_clears_screen_hud_in_both_modes ... ok
+test visualizer::scene::waterfall::tests::older_rows_flow_forward_and_do_not_depend_on_wall_clock_or_render_frequency ... ok
+test server::tests::import_requires_current_socket_lease_before_consuming_body ... ok
+test server::tests::packaged_assets_have_security_headers_and_no_filesystem_dependency ... ok
+test visualizer::scene::particles::tests::stream_history_and_draw_stay_bounded_under_maximum_input ... ok
+test audio::tests::recovered_device_error_marks_analysis_discontinuity ... ok
+test visualizer::scene::fixtures::hud_is_screen_anchored_while_world_has_depth_and_orbits ... ok
+test native_input::timeline::tests::fit_covers_entire_song_and_view_clamps_without_retuning ... ok
+test audio::tests::scheduling_ack_and_overload_are_explicit ... ok
+test server::tests::router_enforces_auth_host_origin_and_traversal ... ok
+test native_input::tests::native_backlog_has_bounded_memory_and_independent_fail_safe ... ok
+test analysis::tests::files_are_measured_only_and_projections_never_become_power ... ok
+test analysis::tests::timbre_changes_measured_not_logical_interpretation ... ok
+test audio::tests::analysis_overflow_is_visible_as_gap ... ok
+test audio::tests::continuous_hz_detuning_and_source_identity ... ok
+test native_input::tests::overflow_disconnect_cancels_queued_native_starts_without_global_panic ... ok
+test visualizer::scene::song::tests::full_song_is_available_before_playback_and_dense_geometry_is_bounded ... ok
+test native_input::tests::native_down_up_order_focus_reset_and_browser_isolation ... ok
+test native_input::tests::escape_uses_independent_global_panic_and_drop_releases_native_client ... ok
+test visualizer::scene::fixtures::both_modes_build_bounded_finite_identical_facts ... ok
+
+test result: ok. 123 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 14.17s
+
+     Running unittests src/main.rs (target/debug/deps/nova_daw-1c43268f680a69f0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/history_stream.rs (target/debug/deps/history_stream-e5c0f00a02166bcb)
+
+running 2 tests
+test history_analysis_budget ... ignored, release-only 32-second virtual analysis diagnostic, not hardware soak
+test history_survives_unobserved_frames_but_never_crosses_gaps_or_epochs ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests/realtime.rs (target/debug/deps/realtime-defb40375de134b3)
+
+running 4 tests
+test callback_budget_reference ... ignored, release-only offline DSP benchmark; not a hardware soak
+test source_transport_and_fades_do_not_allocate_on_callback ... ok
+test resource_replacement_retires_tables_and_assets_off_callback ... ok
+test callback_no_allocations_or_deallocations_at_sixteen_voices ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running tests/runtime.rs (target/debug/deps/runtime-0887029b2b959175)
+
+running 6 tests
+test replay_and_invalid_values_are_rejected ... ok
+test saturated_control_queue_has_independent_emergency_silence ... ok
+test analysis_reset_changes_epoch_and_drops_old_history ... ok
+test scheduled_start_then_early_release_cannot_stick ... ok
+test imported_stereo_is_measured_only_and_seek_starts_new_epoch ... ok
+test complete_acknowledged_state_and_client_isolation ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running tests/song_transport.rs (target/debug/deps/song_transport-d604f8db56f1cdd4)
+
+running 2 tests
+test atomic_seek_is_asset_scoped_ordered_and_stereo_preserving ... ok
+test panic_cancels_queued_resume_and_end_seek_stays_paused ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+     Running tests/synthesis.rs (target/debug/deps/synthesis-9958738476d30786)
+
+running 4 tests
+test envelope_release_and_parameter_smoothing_do_not_step_output ... ok
+test continuous_detuned_tone_peak_matches_requested_hz ... ok
+test high_note_band_limits_do_not_fold_additive_partials ... ok
+test additive_partials_and_fm_am_sidebands_are_audible ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.89s
+
+   Doc-tests nova_daw
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Compiling nova-daw v0.2.0 (/home/persist/Auto)
+warning: associated function `from_waveform` is never used
+  --> src/visualizer/scene/selection.rs:11:12
+   |
+10 | impl Range {
+   | ---------- associated function in this implementation
+11 |     pub fn from_waveform(points: &[WavePoint]) -> Option<Self> {
+   |            ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `set_band_count` and `set_decay_rate` are never used
+   --> src/dsp/spectrum.rs:125:12
+    |
+ 46 | impl SpectrumAnalyzer {
+    | --------------------- methods in this implementation
+...
+125 |     pub fn set_band_count(&mut self, band_count: usize) {
+    |            ^^^^^^^^^^^^^^
+...
+132 |     pub fn set_decay_rate(&mut self, decay: f32) {
+    |            ^^^^^^^^^^^^^^
+
+warning: struct `EngineState` is never constructed
+  --> src/engine/mod.rs:24:12
+   |
+24 | pub struct EngineState {
+   |            ^^^^^^^^^^^
+
+warning: field `sample_rate` is never read
+  --> src/engine/mod.rs:38:9
+   |
+37 | pub struct MusicEngine {
+   |            ----------- field in this struct
+38 |     pub sample_rate: f32,
+   |         ^^^^^^^^^^^
+
+warning: methods `note_off`, `set_wavetable_samples`, `set_wavetable_preset`, `set_harmonics`, and `get_state` are never used
+   --> src/engine/mod.rs:191:12
+    |
+ 52 | impl MusicEngine {
+    | ---------------- methods in this implementation
+...
+191 |     pub fn note_off(&mut self, track_id: usize, raw_note: u8) {
+    |            ^^^^^^^^
+...
+206 |     pub fn set_wavetable_samples(&mut self, samples: Vec<f32>) {
+    |            ^^^^^^^^^^^^^^^^^^^^^
+...
+211 |     pub fn set_wavetable_preset(&mut self, preset: &str) {
+    |            ^^^^^^^^^^^^^^^^^^^^
+...
+228 |     pub fn set_harmonics(&mut self, harmonics: &[f32]) {
+    |            ^^^^^^^^^^^^^
+...
+293 |     pub fn get_state(&self) -> EngineState {
+    |            ^^^^^^^^^
+
+warning: struct `RingAudioSource` is never constructed
+  --> src/engine/audio_output.rs:14:12
+   |
+14 | pub struct RingAudioSource {
+   |            ^^^^^^^^^^^^^^^
+
+warning: struct `AudioOutputHandle` is never constructed
+  --> src/engine/audio_output.rs:69:12
+   |
+69 | pub struct AudioOutputHandle {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: method `stop` is never used
+  --> src/engine/audio_output.rs:77:12
+   |
+76 | impl AudioOutputHandle {
+   | ---------------------- method in this implementation
+77 |     pub fn stop(&self) {
+   |            ^^^^
+
+warning: function `start_audio_output` is never used
+  --> src/engine/audio_output.rs:91:8
+   |
+91 | pub fn start_audio_output<F>(sample_rate: u32, render_fn: F) -> AudioOutputHandle
+   |        ^^^^^^^^^^^^^^^^^^
+
+warning: field `sample_rate` is never read
+   --> src/engine/sampler.rs:177:5
+    |
+176 | pub struct SamplerVoice {
+    |            ------------ field in this struct
+177 |     sample_rate: f32,
+    |     ^^^^^^^^^^^
+    |
+    = note: `SamplerVoice` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `release` is never used
+   --> src/engine/sampler.rs:212:12
+    |
+187 | impl SamplerVoice {
+    | ----------------- method in this implementation
+...
+212 |     pub fn release(&mut self) {
+    |            ^^^^^^^
+
+warning: struct `TransportState` is never constructed
+  --> src/engine/sequencer.rs:52:12
+   |
+52 | pub struct TransportState {
+   |            ^^^^^^^^^^^^^^
+
+warning: fields `bpm` and `sample_rate` are never read
+  --> src/engine/sequencer.rs:62:9
+   |
+59 | pub struct Sequencer {
+   |            --------- fields in this struct
+...
+62 |     pub bpm: f32,
+   |         ^^^
+...
+65 |     pub sample_rate: f32,
+   |         ^^^^^^^^^^^
+
+warning: methods `set_bpm`, `play`, `pause`, `stop`, `toggle_step`, and `transport_state` are never used
+   --> src/engine/sequencer.rs:100:12
+    |
+ 70 | impl Sequencer {
+    | -------------- methods in this implementation
+...
+100 |     pub fn set_bpm(&mut self, bpm: f32) {
+    |            ^^^^^^^
+...
+105 |     pub fn play(&mut self) {
+    |            ^^^^
+...
+109 |     pub fn pause(&mut self) {
+    |            ^^^^^
+...
+113 |     pub fn stop(&mut self) {
+    |            ^^^^
+...
+119 |     pub fn toggle_step(
+    |            ^^^^^^^^^^^
+...
+248 |     pub fn transport_state(&self) -> TransportState {
+    |            ^^^^^^^^^^^^^^^
+
+warning: fields `adsr_config` and `sample_rate` are never read
+   --> src/engine/voice.rs:164:9
+    |
+162 | pub struct PolyphonicSynth {
+    |            --------------- fields in this struct
+163 |     pub voices: Vec<SynthVoice>,
+164 |     pub adsr_config: AdsrConfig,
+    |         ^^^^^^^^^^^
+...
+168 |     sample_rate: f32,
+    |     ^^^^^^^^^^^
+
+warning: methods `note_off` and `set_adsr` are never used
+   --> src/engine/voice.rs:217:12
+    |
+171 | impl PolyphonicSynth {
+    | -------------------- methods in this implementation
+...
+217 |     pub fn note_off(&mut self, note: u8) {
+    |            ^^^^^^^^
+...
+241 |     pub fn set_adsr(&mut self, config: AdsrConfig) {
+    |            ^^^^^^^^
+
+warning: multiple methods are never used
+   --> src/engine/wavetable.rs:30:12
+    |
+ 16 | impl Wavetable {
+    | -------------- methods in this implementation
+...
+ 30 |     pub fn size(&self) -> usize {
+    |            ^^^^
+...
+ 34 |     pub fn set_samples(&mut self, new_samples: Vec<f32>) {
+    |            ^^^^^^^^^^^
+...
+ 58 |     pub fn normalize(&mut self) {
+    |            ^^^^^^^^^
+...
+ 83 |     pub fn generate_triangle(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^
+...
+ 92 |     pub fn generate_sawtooth(&mut self) {
+    |            ^^^^^^^^^^^^^^^^^
+...
+101 |     pub fn generate_square(&mut self, duty: f32) {
+    |            ^^^^^^^^^^^^^^^
+...
+111 |     pub fn generate_harmonics(&mut self, harmonics: &[f32]) {
+    |            ^^^^^^^^^^^^^^^^^^
+
+warning: method `set_sample_rate` is never used
+   --> src/engine/wavetable.rs:169:12
+    |
+156 | impl WavetableOscillator {
+    | ------------------------ method in this implementation
+...
+169 |     pub fn set_sample_rate(&mut self, sample_rate: f32) {
+    |            ^^^^^^^^^^^^^^^
+
+warning: constant `PITCHCLASSES_COUNT` is never used
+  --> src/theory/mod.rs:13:11
+   |
+13 | pub const PITCHCLASSES_COUNT: usize = 12;
+   |           ^^^^^^^^^^^^^^^^^^
+
+warning: constant `PITCHGROUPS_COUNT` is never used
+  --> src/theory/mod.rs:14:11
+   |
+14 | pub const PITCHGROUPS_COUNT: usize = 12;
+   |           ^^^^^^^^^^^^^^^^^
+
+warning: function `interval_base_dissonance` is never used
+   --> src/theory/mod.rs:239:8
+    |
+239 | pub fn interval_base_dissonance(inv: &Interval) -> f32 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `nova-daw` (lib test) generated 21 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.41s
+     Running unittests src/lib.rs (target/debug/deps/nova_daw-62746eccccd35486)
+
+running 122 tests
+test analysis::contributions::tests::imported_audio_bands_never_gain_performer_identity ... ok
+test analysis::field::tests::fourth_power_weighting_and_scale_invariance ... ok
+test analysis::field::tests::silence_and_chromatic_are_neutral_without_default_key ... ok
+test analysis::compass::tests::circle_and_tetrachords_preserve_all_transpositions ... ok
+test analysis::contributions::tests::projected_relationships_keep_exact_ratios_and_explicit_status ... ok
+test analysis::history::stream::tests::native_history_does_not_multiply_browser_json_payload ... ok
+test analysis::roots::tests::unfinished_hypothesis_never_reinforces_arrivals ... ok
+test analysis::history::tests::signed_stereo_history_and_minmax_are_actual_samples ... ok
+test analysis::roots::tests::no_default_root_and_all_competing_modes_retained ... ok
+test analysis::history::tests::rings_are_bounded_and_clear_drops_old_epoch ... ok
+test analysis::cadence::tests::resolution_requires_tension_drop_and_half_second_support ... ok
+test analysis::history::view::tests::expired_or_unrecorded_history_never_becomes_fake_zero_samples ... ok
+test analysis::cadence::tests::silence_and_unresolved_tension_never_declare_arrival ... ok
+test analysis::history::tests::compact_analysis_history_prunes_at_exact_sample_boundary ... ok
+test analysis::history::stream::tests::zoom_is_raw_pcm_and_unavailable_history_is_empty ... ok
+test analysis::roots::tests::root_score_uses_explainable_weights_times_raw_group_support ... ok
+test analysis::history::view::tests::scrubbed_close_zoom_is_signed_sample_exact ... ok
+test analysis::source::tests::missing_tiles_remain_missing_and_snapshots_share_storage ... ok
+test analysis::tests::out_of_matrix_spectrum_keeps_energy_without_edge_clamping ... ok
+test analysis::theory::tests::all_modes_are_ordered_from_the_major_tonic ... ok
+test analysis::theory::tests::every_membership_and_transposition_matches_diatonic_intervals ... ok
+test analysis::theory::tests::exact_detuning_and_outside_matrix_are_not_clamped ... ok
+test analysis::source::tests::source_stereo_extrema_are_exact_and_cancellable ... ok
+test analysis::history::view::tests::medium_zoom_minmax_uses_only_selected_interval ... ok
+test analysis::spectrum::tests::region_weights_form_partition_of_unity ... ok
+test audio::tests::file_decode_preserves_stereo_and_rejects_bad_input ... ok
+test analysis::history::stream::tests::row_and_band_limits_are_bounded_and_selection_never_invents_timestamps ... ok
+test analysis::history::stream::tests::history_retains_different_measured_frames_not_copies_of_current ... ok
+test audio::tests::finite_controls_and_arrays_are_validated_without_coercion ... ok
+test analysis::tests::waveform_fidelity_uses_signed_stereo_not_spectral_bins ... ok
+test analysis::tests::history_view_clamps_inputs_without_resetting_view_on_analysis_gap ... ok
+test analysis::cadence::tests::holding_unresolved_note_cannot_resolve_itself_by_context_adaptation ... ok
+test engine::tests::test_engine_drum_samplers ... ok
+test engine::voice::tests::test_filter_dynamic_resonance_change ... ok
+test analysis::tests::selecting_history_view_changes_only_waveform_window ... ok
+test engine::voice::tests::test_synth_panic ... ok
+test engine::voice::tests::test_voice_auto_release ... ok
+test engine::voice::tests::test_filter_resonance_stability ... ok
+test native_input::tests::keyboard_matches_browser_hz_and_release_survives_octave_instrument_modifiers ... ok
+test analysis::tests::epoch_reset_does_not_join_disjoint_pcm_or_temporal_evidence ... ok
+test analysis::spectrum::tests::stereo_antiphase_survives_and_power_is_not_tripled ... ok
+test analysis::source::tests::source_spectrum_uses_real_stereo_and_does_not_invent_performed_notes ... ok
+test analysis::history::stream::tests::pcm_stream_covers_every_selected_sample_with_exact_signed_stereo_extrema ... ok
+test audio::tests::waveform_and_partials_are_bounded_periodic_tables ... ok
+test native_input::timeline::tests::narrow_hud_hit_testing_keeps_top_and_bottom_anchored_without_stretch ... ok
+test engine::tests::test_engine_render_block_and_spectrum ... ok
+test analysis::spectrum::tests::low_frequency_confidence_does_not_claim_sub_window_precision ... ok
+test server::assets::tests::traversal_is_not_an_asset ... ok
+test server::http::tests::import_checks_content_not_server_paths ... ok
+test analysis::history::view::tests::wide_zoom_merges_cached_extrema_and_exact_edge_fragments ... ok
+test server::http::tests::streamed_import_enforces_actual_bytes_not_declared_length ... ok
+test server::security::tests::credentials_require_exact_bearer ... ok
+test server::security::tests::bounded_client_slots_never_claim_native ... ok
+test server::security::tests::origins_and_duplicate_host_are_exact ... ok
+test server::socket::tests::rate_limit_is_bounded ... ok
+test runtime::source::tests::source_index_is_latest_only_survives_seek_and_stops ... ok
+test audio::tests::scheduling_ack_and_overload_are_explicit ... ok
+test theory::tests::test_144_pitches_coverage ... ok
+test theory::tests::test_accidental_fs_major_relational_harmony ... ok
+test theory::tests::test_frequency_propagation ... ok
+test theory::tests::test_harmonic_analyzer_triad_consonance ... ok
+test theory::tests::test_harmonic_analyzer_tritone_dissonance ... ok
+test theory::tests::test_idle_no_default_key ... ok
+test visualizer::camera::acknowledgement_tests::requested_camera_does_not_mutate_acknowledged_view ... ok
+test visualizer::camera::tests::finite_projection_for_minimized_and_extreme_camera ... ok
+test visualizer::mesh::tests::mesh_capacity_never_overruns_gpu_upload ... ok
+test visualizer::mesh::tests::neutral_evidence_has_no_false_compatibility_color ... ok
+test visualizer::scene::emission::tests::absolute_power_controls_radius_intensity_size_and_density_without_quiet_floor ... ok
+test visualizer::scene::emission::tests::deterministic_emission_disc_stays_bounded_and_silent_power_draws_nothing ... ok
+test visualizer::scene::field::tests::measured_cell_and_emitter_share_the_same_absolute_power_response ... ok
+test audio::tests::brief_notes_retain_logical_energy_before_end_of_block ... ok
+test visualizer::scene::fixtures::geometry_cpu_budget ... ignored, release-only CPU geometry diagnostic, not GPU frame timing
+test audio::tests::bus_processing_is_explicit_and_not_assigned_to_one_source ... ok
+test visualizer::scene::matrix_layout::tests::detuned_origins_move_continuously_with_cents_and_wrap_only_at_row_boundary ... ok
+test audio::tests::recovered_device_error_marks_analysis_discontinuity ... ok
+test visualizer::scene::matrix_layout::tests::table_doubles_both_dimensions_about_its_center_without_moving_depth ... ok
+test visualizer::scene::matrix_layout::tests::voice_origin_matches_transformed_cell_for_every_supported_note ... ok
+test native_input::timeline::tests::fit_covers_entire_song_and_view_clamps_without_retuning ... ok
+test visualizer::scene::particles::tests::measured_events_spread_with_power_but_keep_exact_spectral_destination ... ok
+test visualizer::scene::matrix_layout::tests::enlarged_table_and_reflowed_annotations_clear_the_hud_in_both_modes ... ok
+test visualizer::scene::particles::tests::paused_audio_freezes_particles_and_gaps_clear_stream_history ... ok
+test visualizer::scene::particles::tests::projection_cannot_claim_measured_height_or_pcm_and_processing_has_no_path ... ok
+test visualizer::scene::particles::tests::selected_history_rejects_unrelated_temporal_links_without_hiding_spectrum_stream ... ok
+test visualizer::scene::selection::tests::scrubbing_axes_show_actual_selected_samples_not_now ... ok
+test visualizer::scene::selection::tests::selected_range_rejects_offscreen_events_instead_of_clamping ... ok
+test visualizer::scene::song::tests::dense_song_scene_budget ... ignored, release-only dense source scene CPU timing, not GPU or audio soak
+test analysis::tests::silence_suppresses_measured_cadence_despite_long_window_tail ... ok
+test visualizer::scene::particles::tests::stream_reaches_exact_frequency_and_measured_height_through_real_depth ... ok
+test visualizer::scene::spatial::tests::between_bin_endpoint_lies_on_rendered_log_frequency_profile ... ok
+test visualizer::scene::tests::matrix_mapping_keeps_out_of_range_frequencies_outside ... ok
+test visualizer::scene::tests::missed_budget_reduces_decorations_then_recovers ... ok
+test visualizer::scene::tests::spectrum_coordinates_are_not_pcm_indices ... ok
+test audio::tests::client_disconnect_watermark_does_not_cut_new_generation ... ok
+test visualizer::scene::waterfall::tests::compact_pcm_stays_beside_spectrum_and_shares_its_depth_clock ... ok
+test visualizer::scene::waterfall::tests::changing_the_live_spectrum_never_rewrites_historical_ridges ... ok
+test analysis::spectrum::tests::crossover_tones_conserve_power_across_resolutions ... ok
+test visualizer::scene::song::tests::missing_source_tiles_never_become_silent_or_repeated_rows ... ok
+test visualizer::scene::waterfall::tests::signed_stereo_shapes_and_envelopes_preserve_negative_values ... ok
+test visualizer::scene::waterfall::tests::temporal_links_use_actual_overlapping_history_not_frequency_indices ... ok
+test visualizer::scene::waterfall::tests::older_rows_flow_forward_and_do_not_depend_on_wall_clock_or_render_frequency ... ok
+test visualizer::scene::waterfall::tests::no_lines_bridge_pcm_gaps_and_no_old_epoch_is_drawn ... ok
+test native_input::timeline::tests::paused_drag_stays_paused_cancel_and_replace_never_resume ... ok
+test audio::tests::panic_cancels_future_starts_and_silences_filter_tail ... ok
+test visualizer::scene::waterfall::tests::default_history_layout_clears_screen_hud_in_both_modes ... ok
+test analysis::tests::discontinuities_clear_history_and_cadence_and_report_gap ... ok
+test visualizer::scene::particles::tests::stream_history_and_draw_stay_bounded_under_maximum_input ... ok
+test native_input::timeline::tests::drag_pauses_once_previews_without_seek_then_commits_asset_transaction ... ok
+test server::tests::packaged_assets_have_security_headers_and_no_filesystem_dependency ... ok
+test analysis::tests::noise_is_finite_and_no_default_cadence_is_declared ... ok
+test visualizer::scene::fixtures::hud_is_screen_anchored_while_world_has_depth_and_orbits ... ok
+test server::tests::import_requires_current_socket_lease_before_consuming_body ... ok
+test server::tests::router_enforces_auth_host_origin_and_traversal ... ok
+test audio::tests::analysis_overflow_is_visible_as_gap ... ok
+test analysis::tests::files_are_measured_only_and_projections_never_become_power ... ok
+test native_input::tests::native_backlog_has_bounded_memory_and_independent_fail_safe ... ok
+test native_input::tests::overflow_disconnect_cancels_queued_native_starts_without_global_panic ... ok
+test analysis::tests::timbre_changes_measured_not_logical_interpretation ... ok
+test audio::tests::continuous_hz_detuning_and_source_identity ... ok
+test visualizer::scene::song::tests::full_song_is_available_before_playback_and_dense_geometry_is_bounded ... ok
+test native_input::tests::native_down_up_order_focus_reset_and_browser_isolation ... ok
+test native_input::tests::escape_uses_independent_global_panic_and_drop_releases_native_client ... ok
+test visualizer::scene::fixtures::both_modes_build_bounded_finite_identical_facts ... ok
+
+test result: ok. 120 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 14.69s
+
+     Running unittests src/main.rs (target/debug/deps/nova_daw-97f8fb74bb44b658)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/history_stream.rs (target/debug/deps/history_stream-8189a1170e214032)
+
+running 2 tests
+test history_analysis_budget ... ignored, release-only 32-second virtual analysis diagnostic, not hardware soak
+test history_survives_unobserved_frames_but_never_crosses_gaps_or_epochs ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.35s
+
+     Running tests/realtime.rs (target/debug/deps/realtime-a44764ea7fdc238d)
+
+running 4 tests
+test callback_budget_reference ... ignored, release-only offline DSP benchmark; not a hardware soak
+test resource_replacement_retires_tables_and_assets_off_callback ... ok
+test source_transport_and_fades_do_not_allocate_on_callback ... ok
+test callback_no_allocations_or_deallocations_at_sixteen_voices ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running tests/runtime.rs (target/debug/deps/runtime-11c1c9434f542028)
+
+running 6 tests
+test replay_and_invalid_values_are_rejected ... ok
+test saturated_control_queue_has_independent_emergency_silence ... ok
+test analysis_reset_changes_epoch_and_drops_old_history ... ok
+test scheduled_start_then_early_release_cannot_stick ... ok
+test imported_stereo_is_measured_only_and_seek_starts_new_epoch ... ok
+test complete_acknowledged_state_and_client_isolation ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running tests/song_transport.rs (target/debug/deps/song_transport-0a815e90f861c32d)
+
+running 2 tests
+test panic_cancels_queued_resume_and_end_seek_stays_paused ... ok
+test atomic_seek_is_asset_scoped_ordered_and_stereo_preserving ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/synthesis.rs (target/debug/deps/synthesis-fc2a1fc7340d798e)
+
+running 4 tests
+test envelope_release_and_parameter_smoothing_do_not_step_output ... ok
+test continuous_detuned_tone_peak_matches_requested_hz ... ok
+test high_note_band_limits_do_not_fold_additive_partials ... ok
+test additive_partials_and_fm_am_sidebands_are_audible ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s
+
+   Doc-tests nova_daw
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+    Checking nova-daw v0.2.0 (/home/persist/Auto)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.33s
+✔ press/release uses stable voice identity across controls, not pitch labels (1.24642ms)
+✔ typing and pointer sources at the same frequency retain independent voices (0.168505ms)
+✔ focus loss releases every held voice exactly once (0.201306ms)
+✔ disconnect forgets prior identities and reconnect never replays starts (0.122198ms)
+✔ late rejected start cannot delete a newer activation (0.168796ms)
+✔ controls await applied acknowledgement and authoritative snapshot (0.566959ms)
+✔ a disconnected client cannot send and pending commands fail explicitly (0.553605ms)
+✔ waveform history sliders match acknowledged engine view bounds (0.341248ms)
+✔ every packaged browser module parses; no alternate audio or harmonic engine (136.267865ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 147.694011
+Owned Rust line gates pass
+ABI rejection and failed-create tests passed
+Instanced stroke bounds, finite widths, HUD split and layout passed
+Keyboard ordering, repeats, overflow and focus-reset tests passed
+   Compiling nova-daw v0.2.0 (/home/persist/Auto)
+    Finished `release` profile [optimized + debuginfo] target(s) in 11.96s
+     Running tests/realtime.rs (target/release/deps/realtime-4dd410b69df65fca)
+
+running 1 test
+Offline 16-voice DSP: p50=397us p95=510us p99=588us deadline=5333us
+test callback_budget_reference ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 2.51s
+
+Software gates passed. Hardware soak, live browser and explicit visual acceptance are still required.

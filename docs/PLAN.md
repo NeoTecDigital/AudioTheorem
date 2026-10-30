@@ -259,3 +259,158 @@ Human review must distinguish logical/measured/projected facts and cadence witho
 - Requested visual features and source synchronization are complete. Audio release certification
   remains blocked by the recorded ALSA underruns and outstanding soak/performance gates; do not
   confuse publication of the implementation candidate with certification of the entire release.
+
+## Review/design request — full-song flow, harmonic compass, dense spectrum
+- Scope: user requests integration review and UI design, not implementation yet. Reviewed current
+  asset/import, sample-clock playback/seek, history selection, scene geometry, native input ABI,
+  HUD and harmonic fields at main94462a5. No application code or remote refs changed in this review.
+- Current evidence: decoded stereo assets are already available off-thread (256MiB upload/10minute
+  limits); live PCM/analysis retain30seconds, clear on seek/epoch discontinuity, and expose at most
+ 48 spectral rows ×160 drawing bands /3072 PCM summary points. Native events expose orbit/wheel,
+  not pointer coordinates/buttons for hit testing. HUD already receives independent fields and84
+  root/mode candidates. Spectrum strokes are world-space quads; Nova uses single-sample rasterization.
+- Proposed experience: fixed bright playback line, quieter incoming source-song spectrum and
+  outgoing elapsed history; linked compact stereo waveform; whole-song overview always available,
+  local zoom and Fit Song, Follow toggle. The enlarged matrix remains a current-time cross-section,
+  not a false performed-note transcription of a recording. Particle route duration must not imply
+  a delayed audio/playhead; source-preview contributions and actual output remain distinguishable.
+- Required architecture: cancellable, CPU/memory-budgeted off-thread asset index and multiresolution
+  tiles, keyed by asset identity/rate/model version. Prioritize overview then visible range; reuse
+  decoded Arc-owned PCM, not a second full copy. Keep actual-output rings separate from precomputed
+  source material, which cannot include future live synth mixing, gain changes or clipping. Reuse
+  analysis/theory math without running a full song through the real-time coordinator's history path.
+- Timeline contract proposal: exact asset-frame cursor/rate plus engine-sample/epoch mapping,
+  source/output provenance, cache coverage/status and seek generation. Seeking invalidates live
+  continuity but not the immutable song cache. Source harmonic history is separate from live
+  cadence state; scrubbing cannot inject future evidence into actual root/cadence estimates.
+  The source ribbon follows asset time; actual-output lanes retain engine time, especially during
+  pause/live playing. Map the two only across known contiguous playback segments.
+- Recommended interaction (pending approval): left-drag time ruler/overview pauses only file
+  playback and previews the cached cursor; release applies one latest-generation seek and restores
+  prior play/pause state after acknowledgement. Escape retains panic and cancels scrub without
+  resuming; Space toggles transport. Mark
+  draft/acknowledged cursors separately. No camera orbit while a HUD/timeline drag owns the pointer.
+  Audible continuous scratch-scrubbing is not implied; preserve native instrument releases/panic.
+  Extend versioned native pointer ABI and add screen/world picking; add bounded seek smoothing.
+- Harmonic compass proposal: stable fifths-ordered12-pitch ring, separate logical/actual spectral
+  activity tracks, weighted competing root/mode arcs and explicit confidence/uncertainty. Center
+  states Live or Inspecting [song time]; imported recordings never gain explicit played-note marks.
+  Selected-scale lower/upper tetrachord membership is an optional overlapping lens, not four
+  adjacent fifth sectors. Example C-D-E-F / G-A-B-C and the shared G-A-B-C lens in G major. Derive
+  memberships/intervals from the verified AudioTheorem adapter; no separate browser theory engine.
+  Keep circles compact in reserved HUD space, not a second full control panel over the main scene.
+- Density proposal: target up to192 real time slices (4×), with320 visible frequency bands near
+  the play line and adaptive lower detail farther away; zoom may request finer source summaries.
+  These are drawing-detail targets, not new FFT precision guarantees. Preserve transients and
+  age/resolution metadata; no repeated current slice or invented data across gaps/unindexed ranges.
+- Budget finding: current quad strokes cost6 vertices/segment.192×320 needs367,488 spectrum
+  vertices alone, exceeding the262,144 total cap; even192×160 costs183,168 before PCM/HUD/particles.
+  Do not simply multiply constants: separate spectrum/PCM budgets, use indexed/instanced/tiled
+  drawing, explicit degradation and visible-range uploads rather than silent mesh truncation.
+- Rendering proposal: screen-stable anti-aliased strokes with proper joins/coverage, optional
+  device-supported MSAA, restrained surface fill and a brighter current ridge. More rows alone
+  cannot cure subpixel gaps. Generic stroke/tile upload support belongs in Nova, not another renderer.
+- Integration boundaries: asset/index modules under src/analysis + src/runtime, timeline contracts
+  under src/contracts; src/visualizer/scene/waterfall and new transport interaction/HUD compass
+  modules; Nova Scene pointer/pipeline/buffers and the versioned adapter; browser stays import and
+  detailed controls with acknowledged transport/status, not duplicated analysis or rendering.
+- Suggested delivery: freeze time/provenance/input/GPU contracts; implement indexed source timeline
+  and atomic scrub/seek; implement dense rendering and compass in isolated modules; consolidate
+  correctness/security/efficiency/quality QA after each development phase and live comprehension QA.
+- Acceptance proposal: whole file accessible before playback; pause freezes source position; seek
+  does not destroy source history; preview/output distinction is visible; ambiguity remains visible;
+  all12 transpositions/tetrachords match adapter memberships; 4× detail respects explicit budgets;
+  pointer capture/focus/cancel cannot leave stuck input; no cross-epoch trails. Include file replace,
+  near-end scrub, variable device buffers, slow indexing and noise/silence fixtures. Existing ALSA
+  xrun failure makes bounded lower-priority indexing and audio stress tests especially important.
+- Expected versus actual: review/design and capacity arithmetic completed, not feature delivery or
+  performance certification. Proposal awaits implementation approval; no code tests rerun for a
+  documentation-only review. No commits/pushes made for this review.
+- Primary references checked: Texas A&M-hosted Steps to Music Theory, Major Scales and Keys
+  (https://odp.library.tamu.edu/stepstomusictheory/chapter/major-scales-keys/); Khronos Vulkan
+  multisampling tutorial (https://docs.vulkan.org/tutorial/latest/10_Multisampling.html).
+
+### Approved implementation — song landscape / compass / dense strokes
+- User approved implementation. Work remains on local main; no new publication requested.
+- Contracts frozen: source cache uses asset-frame time, immutable Arc tiles, bounded 50ms
+  summaries and exact stereo extrema; engine history remains independent. Native ABI v3 adds
+  ordered bounded pointer events and instanced analytic-AA strokes, with explicit capacities.
+- Ownership/separation (single implementer): analysis/source + runtime/source own indexing;
+  contracts/transport + native_input own seek transactions; Nova owns generic input/stroke GPU
+  facilities; scene/song + scene/compass own music presentation. Browser remains authoritative
+  import/detail control, not another analysis engine.
+- Development deliverables: progressive source overview/index, safe seek/pause/resume,
+  Follow/Fit/zoom timeline, dense source/output landscape, two-track harmonic compass and
+  selected tetrachord lens. Then one consolidated QA stage including correctness, security,
+  efficiency, code limits and native visual workflow verification. Failed gates get corrections.
+- Development implemented: separate source-index worker with latest-only immutable tile snapshots,
+  shared decoded PCM, exact stereo overview and 50ms multi-window spectrum summaries; per-row
+  throttling and import/shutdown cancellation. Source cache stays intact on audio seeks.
+- Native transport drafts pause only files; release sends one asset/generation-scoped atomic
+  seek/resume. Focus loss, panic and replacement cancel drafts; five-millisecond file transitions
+  avoid hard steps. ABI v3 carries ordered pointer events and bounded instance strokes.
+- Dense rendering uses 192-row/320-band summaries and generic GPU analytic-AA capsule instances
+  rather than expanding history into triangle quads. Source preview is labeled pre-gain, actual
+  output remains independent; overview provides Fit, Follow, zoom and pointer scrubbing.
+- Compass shows explicit held markers, measured evidence, competing group weights/confidence,
+  and an optional selected mode/tetrachord membership lens; source inspection is labeled separately.
+- Consolidated QA now begins. Expected: deterministic/index/transport/input/ABI tests, no callback
+  allocations, clean production lint and line gates, source build, native rendering/input captures.
+  Performance and visual acceptance are not claimed until measured; existing audio soak limitation
+  remains open. Implementation choice: visible instances are uploaded per frame, not a persistent
+  GPU tile cache; measure before adding cache complexity.
+- QA corrections: initial smoke harness assumed a1920×1080 drawable but the tiling compositor
+  supplied842×1393, so its coordinates missed the timeline. Harness now floats only its own exact
+  X11 window and reads geometry. Narrow-window HUD is aspect-preserving and camera framing adapts.
+  A separate virtual X-server attempt was unavailable (Xvfb not installed); final evidence uses the
+  real Xwayland/Vulkan window, not a simulated renderer. All injected buttons/keys are released.
+- Visual corrections from actual captures: compass notes/candidate arcs no longer overlap captions;
+  tetrachord-lens squares/ticks are explicitly not cyan played diamonds; bitmap text pixels join
+  cleanly instead of looking dotted; silent PCM lanes dim without changing signed amplitudes.
+- Security/code review: new native upload counts/strides/finiteness/HUD split validate before copy;
+  ordered128-pointer overflow resets capture and held input. Asset/generation/bounds/panic checks
+  run again at the audio owner; importing/replacing a file cannot reuse stale seeks. Source data
+  stays out of browser JSON and out of logical/cadence evidence. Scene overflow is explicitly shown
+  and reduces decorative load rather than silently hiding a budget failure.
+
+### Song landscape phase — verified outcome / remaining gates
+- Delivered all requested interaction components locally: whole-song waveform/index with coverage,
+  Fit/Follow/zoom, native scrub pause/atomic seek/resume, a dense source landscape, distinct actual
+  output/PCM history, harmonic activity compass and selected mode/tetrachord lens. Default history
+  drawing budget is192 real rows (4× prior48) and up to320 frequency bands (2× prior160).
+- Consolidated software QA passed:139 native Rust tests (123 library +16 integration),136 no-native
+  Rust tests,9 browser tests, production Clippy -D warnings and owned Rust500/50 line gates. Explicit
+  callback instrumentation found zero allocations/deallocations for16 voices and for asset transport
+  plus fades. Latest targeted library and lint verification passed after final HUD helper extraction.
+- Native checks: C ABI v3 layouts, hostile bounds/nonfinite strokes, pointer order/overflow, partial
+  create failure, draw/minimize/restore/resize cycles passed under ASan+UBSan and Vulkan validation.
+  Leak detection disabled for the native driver process; this is not a driver leak certification.
+- Efficiency: offline16-voice callback benchmark p99=588us versus2666us half-deadline gate.
+  Dense source fixture:~116k vertices +74,323 stroke instances; precise CPU p95/p99=6303/6416us,
+  immersive=5956/6290us. These are CPU geometry timings, not GPU timestamp or hardware-soak claims.
+- Live38-second real-device/Xwayland/Vulkan workflow passed: authenticated import, source before
+  playback, native drag pause/seek/resume, new epoch, paused source with advancing engine, native
+  keyboard input, mode acknowledgements and native Escape panic. Captures at1920×1080 were inspected
+  in both modes; quieter source preview, separate actual PCM, lens-vs-played shapes and denser ridges
+  are visible. No independent human comprehension acceptance is claimed.
+- Capture harness corrections: wait for an exact PID/title visible window and compositor mapping;
+  raise/focus that window before capture and input. Hidden/unmapped or cached identical-mode captures
+  are not accepted as fresh evidence. Workstation-specific smoke requires Sway/Xwayland, xdotool,
+  ImageMagick and Python websockets; core tests/app do not depend on that harness.
+- Actual final hardware:48kHz/f32/stereo,256 requested buffer,99 frames latest callback observation,
+  callback max415us, zero reported analysis drops/overloads/CPAL errors. ALSA still logged6 underrun
+  warnings in the final run (other short runs varied); therefore the zero-underrun release gate is
+  FAILED/open, regardless of the CPAL counter.30-minute soak, GPU frame-time/latency measurement,
+  ten-minute-file stress and independent visual acceptance remain unfulfilled release gates.
+- Expected-versus-actual design notes: bounded50ms source tiles plus view decimation and three FFT
+  resolutions were sufficient for current budgets; no persisted multi-level spectral pyramid or
+  persistent GPU tile cache was added. Stroke coverage AA replaces the proposed optional MSAA.
+  Timeline dragging previews silently and commits once on release; audible scratch-scrubbing is
+  intentionally not implemented. Native navigation does not retune or change synthesis controls.
+- Evidence: docs/qa-evidence/song-landscape/ (tests/lint/build/CPU timing, native sanitizers,
+  redacted live log, authoritative device report and native PNGs). No session secrets are committed.
+- Launch: target/release/nova-daw (or cargo run --release). Import WAV/FLAC in the browser, then use
+  Nova's bottom timeline. Source indexing is progressive; the blue underline indicates coverage.
+- VCS: implementation is recorded on local main only. No new remote publication was requested for
+  this phase; remote main/master/legacy-master are unchanged. The earlier completed publication and
+  backup remain valid. Future work must not label this candidate as a certified audio release.

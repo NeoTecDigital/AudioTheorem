@@ -76,21 +76,15 @@ fn signed_stereo_shapes_and_envelopes_preserve_negative_values() {
     let mut mesh = Mesh::new();
     pcm::row(&mut mesh, &history, &history.pcm[0]);
     assert!(mesh
-        .vertices
+        .strokes
         .iter()
-        .any(|v| v.position[1] < PCM_BASE - 0.7 * PCM_AMPLITUDE));
+        .any(|v| v.a[1] < PCM_BASE - 0.7 * PCM_AMPLITUDE));
     assert!(mesh
-        .vertices
+        .strokes
         .iter()
-        .any(|v| v.position[1] > PCM_BASE + 0.8 * PCM_AMPLITUDE));
-    assert!(mesh
-        .vertices
-        .iter()
-        .any(|v| v.position[0] < PCM_X + PCM_WIDTH));
-    assert!(mesh
-        .vertices
-        .iter()
-        .any(|v| v.position[0] >= PCM_X + PCM_STRIDE));
+        .any(|v| v.a[1] > PCM_BASE + 0.8 * PCM_AMPLITUDE));
+    assert!(mesh.strokes.iter().any(|v| v.a[0] < PCM_X + PCM_WIDTH));
+    assert!(mesh.strokes.iter().any(|v| v.a[0] >= PCM_X + PCM_STRIDE));
 }
 
 #[test]
@@ -99,9 +93,9 @@ fn compact_pcm_stays_beside_spectrum_and_shares_its_depth_clock() {
     history.end = 3000;
     let mut mesh = Mesh::new();
     pcm::row(&mut mesh, &history, &history.pcm[0]);
-    assert!(!mesh.vertices.is_empty());
-    for vertex in &mesh.vertices {
-        let [x, y, z, _] = vertex.position;
+    assert!(!mesh.strokes.is_empty());
+    for vertex in &mesh.strokes {
+        let [x, y, z, _] = vertex.a;
         assert!(
             (8.2..10.5).contains(&x),
             "PCM must sit outside the spectrum span"
@@ -159,12 +153,12 @@ fn no_lines_bridge_pcm_gaps_and_no_old_epoch_is_drawn() {
         spatial::SHORE_Z,
         [1.0; 4],
     );
-    assert!(mesh.vertices.is_empty());
+    assert!(mesh.vertices.is_empty() && mesh.strokes.is_empty());
     let mut state = super::super::fixtures::snapshot();
     history.epoch = 77;
     state.analysis.as_mut().unwrap().stream_history = history.into();
     draw(&mut mesh, &state, state.analysis.as_ref().unwrap());
-    assert!(mesh.vertices.is_empty());
+    assert!(mesh.vertices.is_empty() && mesh.strokes.is_empty());
 }
 
 #[test]
@@ -187,7 +181,7 @@ fn changing_the_live_spectrum_never_rewrites_historical_ridges() {
     let mut b = Mesh::new();
     spectrum::row(&mut b, &state, &history, &history.spectrum[0]);
     assert_eq!(
-        a.vertices.iter().map(|v| v.position).collect::<Vec<_>>(),
-        b.vertices.iter().map(|v| v.position).collect::<Vec<_>>()
+        a.strokes.iter().map(|v| (v.a, v.b)).collect::<Vec<_>>(),
+        b.strokes.iter().map(|v| (v.a, v.b)).collect::<Vec<_>>()
     );
 }

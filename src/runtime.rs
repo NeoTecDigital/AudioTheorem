@@ -1,4 +1,5 @@
 //! Coordinator owns control/analysis; audio owns DSP; immutable newest-only snapshots.
+mod source;
 mod worker;
 use crate::{
     audio::{
@@ -33,9 +34,14 @@ pub struct Handle {
     signals: Arc<Signals>,
     import_slot: Arc<Semaphore>,
     asset_id: Arc<AtomicU64>,
+    source_cursor: Arc<AtomicU64>,
 }
 
 impl Handle {
+    pub fn preview(&self, frame: u64) {
+        self.source_cursor.store(frame, Ordering::Relaxed);
+    }
+
     pub async fn command(&self, client: u64, command: Command) -> Result<Ack, String> {
         let receive = self.submit(client, command)?;
         tokio::time::timeout(std::time::Duration::from_secs(5), receive)
@@ -122,25 +128,16 @@ pub fn start(headless: bool) -> Result<Runtime, String> {
     } else {
         Some(Device::prepare()?)
     };
-    let status = device
-        .as_ref()
-        .map(|d| d.status.clone())
-        .unwrap_or(DeviceStatus {
-            available: false,
-            name: "Virtual clock — audio unavailable".into(),
-            sample_rate: 48000,
-            channels: 2,
-            format: "f32 virtual".into(),
-            requested_buffer: 256,
-            actual_buffer: 256,
-            ..DeviceStatus::default()
-        });
+    let status = device_status(&device);
     let signals = Arc::new(Signals::default());
     let (render, ports) = Render::new(status.sample_rate, signals.clone());
     let (requests, receive) = mpsc::channel(64);
     let snapshot = initial(status);
     let (publish, snapshot_rx) = watch::channel(Arc::new(snapshot.clone()));
+    let source_cursor = Arc::new(AtomicU64::new(0));
+    let source = source::SourceCache::start(source_cursor.clone(), signals.clone())?;
     let handle = Handle {
+        source_cursor,
         snapshot: snapshot_rx,
         requests,
         signals: signals.clone(),
@@ -154,7 +151,7 @@ pub fn start(headless: bool) -> Result<Runtime, String> {
     let worker = std::thread::Builder::new()
         .name("harmonic-coordinator".into())
         .spawn(move || {
-            worker::run(receive, ports, signals, publish, snapshot);
+            worker::run(receive, ports, signals, publish, snapshot, source);
         })
         .map_err(|e| e.to_string())?;
     Ok(Runtime {
@@ -163,6 +160,22 @@ pub fn start(headless: bool) -> Result<Runtime, String> {
         virtual_render,
         worker: Some(worker),
     })
+}
+
+fn device_status(device: &Option<Device>) -> DeviceStatus {
+    device
+        .as_ref()
+        .map(|d| d.status.clone())
+        .unwrap_or(DeviceStatus {
+            available: false,
+            name: "Virtual clock — audio unavailable".into(),
+            sample_rate: 48000,
+            channels: 2,
+            format: "f32 virtual".into(),
+            requested_buffer: 256,
+            actual_buffer: 256,
+            ..DeviceStatus::default()
+        })
 }
 
 impl Runtime {
@@ -202,6 +215,8 @@ fn initial(device: DeviceStatus) -> Snapshot {
         device,
         asset: None,
         playback_seconds: 0.0,
+        playback_frame: 0,
+        song: None,
         duration_seconds: 0.0,
         playing: false,
         panic: false,

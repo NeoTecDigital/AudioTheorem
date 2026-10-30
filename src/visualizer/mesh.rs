@@ -1,4 +1,6 @@
 mod font;
+mod strokes;
+pub use strokes::{Stroke, STROKE_CAPACITY};
 
 pub const CAPACITY: usize = 262144;
 pub type Color = [f32; 4];
@@ -16,20 +18,27 @@ pub struct Vertex {
 
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
+    pub strokes: Vec<Stroke>,
+    pub overflow: bool,
 }
 
 impl Mesh {
     pub fn new() -> Self {
         Self {
             vertices: Vec::with_capacity(CAPACITY),
+            strokes: Vec::with_capacity(STROKE_CAPACITY),
+            overflow: false,
         }
     }
     pub fn clear(&mut self) {
         self.vertices.clear();
+        self.strokes.clear();
+        self.overflow = false;
     }
 
     pub fn quad(&mut self, points: [[f32; 3]; 4], color: Color) {
         if self.vertices.len() + 6 > CAPACITY {
+            self.overflow = true;
             return;
         }
         for index in [0, 1, 2, 0, 2, 3] {
@@ -95,6 +104,13 @@ impl Mesh {
         );
     }
 
+    pub fn outline(&mut self, x: f32, y: f32, w: f32, h: f32, thickness: f32, color: Color) {
+        self.rect(x, y, w, thickness, 0.0, color);
+        self.rect(x, y + h - thickness, w, thickness, 0.0, color);
+        self.rect(x, y, thickness, h, 0.0, color);
+        self.rect(x + w - thickness, y, thickness, h, 0.0, color);
+    }
+
     pub fn border(&mut self, x: f32, y: f32, w: f32, h: f32, z: f32, color: Color) {
         self.rect(x, y, w, 0.018, z, color);
         self.rect(x, y + h - 0.018, w, 0.018, z, color);
@@ -144,14 +160,7 @@ impl Mesh {
     fn glyph_row(&mut self, bits: u8, x: f32, y: f32, scale: f32, color: Color) {
         for col in 0..5 {
             if bits & (1 << (4 - col)) != 0 {
-                self.rect(
-                    x + col as f32 * scale,
-                    y,
-                    scale * 0.85,
-                    scale * 0.85,
-                    0.1,
-                    color,
-                );
+                self.rect(x + col as f32 * scale, y, scale, scale, 0.1, color);
             }
         }
     }

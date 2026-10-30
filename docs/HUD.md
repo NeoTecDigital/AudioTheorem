@@ -53,7 +53,7 @@ queue. Zero look-back follows the present; native rendering selects actual retai
 browser waveform reconstruction. Connection, device, analysis
 age/lag, overload and panic remain at the top. Candidate scores are explicitly heuristic, not probability.
 
-## Verification and limitations
+## Historical sandbox verification (superseded by current PLAN.md evidence)
 Tests authored in `tests/browser-controls.mjs` and server unit modules cover syntax, no alternate audio,
 stable voice releases, focus/disconnect handling, explicit pending failures, applied snapshots, auth,
 Host/Origin, asset traversal rejection, content signature, bounded connection slots and command rate.
@@ -80,3 +80,13 @@ regressions pass with the actual rtrb dependency in the current integrated suite
 uses separate slot0 generations, so its focus loss cannot release browser voices. The Nova window
 now has its own compact screen-space performance/interpretation HUD, not a copy of browser editors.
 Live browser/socket checks remain blocked by the environment (see QA.md).
+
+
+## Current native timeline controls
+Import stays in the authenticated browser. Nova adds the whole-song overview with coverage,
+Fit Song / Follow / zoom, drag-to-preview then atomic seek/resume, Space transport, and the
+harmonic compass. Detailed synthesis controls stay in the browser; no new browser theory/audio
+engine or duplicated full dashboard was introduced. Native preview state is local navigation;
+transport and played-note markers always use acknowledged Rust state. Source file previews and
+actual output retain separate identities and clocks. See NATIVE.md and PLAN.md for current live
+TCP/WebSocket/native verification; the historical sandbox limitation above no longer applies.

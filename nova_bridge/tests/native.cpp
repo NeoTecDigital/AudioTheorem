@@ -11,7 +11,7 @@
 
 static NovaUpload upload() {
     NovaUpload u{};
-    u.version = NOVA_ABI_VERSION; u.size = sizeof(u); u.stride = sizeof(NovaVertex);
+    u.version = NOVA_ABI_VERSION; u.size = sizeof(u); u.stride = sizeof(NovaVertex); u.stroke_stride = sizeof(NovaStroke);
     u.transform[0] = u.transform[5] = u.transform[10] = u.transform[15] = 1.0f;
     return u;
 }
@@ -32,6 +32,34 @@ static void boundary() {
     nova_destroy(nullptr);
     std::cout << "ABI rejection and failed-create tests passed\n";
 }
+static void stroke_boundary() {
+    char error[256]{};
+    NovaStroke stroke{{0,0,0,1.5f},{1,1,0,1},{1,1,1,1}};
+    auto u = upload(); u.strokes = &stroke; u.stroke_count = 1;
+    assert(nova_validate_upload(&u, error, sizeof(error)) == 0);
+    stroke.a[3] = NAN; assert(nova_validate_upload(&u, error, sizeof(error)) < 0);
+    stroke.a[3] = 1; u.stroke_count = NOVA_STROKE_CAPACITY + 1;
+    assert(nova_validate_upload(&u, error, sizeof(error)) < 0);
+    u.stroke_count = 0; u.hud_start = 3;
+    assert(nova_validate_upload(&u, error, sizeof(error)) < 0);
+    static_assert(sizeof(NovaUpload) == 112);
+    static_assert(sizeof(NovaStroke) == 48);
+    std::cout << "Instanced stroke bounds, finite widths, HUD split and layout passed\n";
+}
+static void pointers(void* handle) {
+    char error[256]{};
+    NovaEvents out{}; out.version = NOVA_ABI_VERSION; out.size = sizeof(out);
+    assert(nova_poll(handle, &out, error, sizeof(error)) == 0);
+    SDL_Event e{}; e.type = SDL_MOUSEBUTTONDOWN; e.button.button = SDL_BUTTON_LEFT;
+    e.button.x = 40; e.button.y = 60; SDL_PushEvent(&e);
+    e.type = SDL_MOUSEBUTTONUP; SDL_PushEvent(&e);
+    assert(nova_poll(handle, &out, error, sizeof(error)) == 0);
+    assert(out.pointer_count >= 2 && out.pointers[0].kind == 1 && out.pointers[1].kind == 3);
+    for (uint32_t i = 0; i < NOVA_POINTER_CAPACITY + 1; ++i) SDL_PushEvent(&e);
+    assert(nova_poll(handle, &out, error, sizeof(error)) == 0);
+    assert(out.pointer_count == NOVA_POINTER_CAPACITY && out.input_reset);
+    std::cout << "Pointer order, normalization and overflow reset passed\n";
+}
 static void window_event(uint8_t kind) {
     SDL_Event event{}; event.type = SDL_WINDOWEVENT; event.window.event = kind;
     SDL_PushEvent(&event);
@@ -47,11 +75,14 @@ static void window() {
     void* handle = nullptr;
     if (nova_create(640, 480, &handle, error, sizeof(error)) < 0)
         throw std::runtime_error(error);
+    pointers(handle);
     std::array<NovaVertex, 3> triangle{{
         {{-0.7f,0.5f,0.5f,1},{0.12f,0.79f,0.48f,1}},
         {{0.7f,0.5f,0.5f,1},{0.94f,0.63f,0.18f,1}},
         {{0,-0.5f,0.5f,1},{0.17f,0.90f,0.97f,1}}}};
-    auto u = upload(); u.count = 3; u.vertices = triangle.data();
+    auto u = upload(); u.count = 3; u.hud_start = 3; u.vertices = triangle.data();
+    NovaStroke stroke{{-0.8f,-0.7f,0,1.5f},{0.8f,0.7f,0,1},{0.2f,0.9f,1,0.8f}};
+    u.strokes = &stroke; u.stroke_count = 1;
     for (int i = 0; i < 120; ++i) {
         cycle_events(i);
         NovaEvents events{}; events.version = NOVA_ABI_VERSION; events.size = sizeof(events);
@@ -74,11 +105,12 @@ static void keyboard() {
     assert(out.key_count == nova::key_capacity && out.input_reset);
     out = {}; e.type = SDL_WINDOWEVENT; e.window.event = SDL_WINDOWEVENT_FOCUS_LOST;
     nova::append_input(out, e); assert(out.input_reset);
-    static_assert(sizeof(NovaEvents) == 1584);
+    static_assert(sizeof(NovaEvents) == 3636);
     std::cout << "Keyboard ordering, repeats, overflow and focus-reset tests passed\n";
 }
 int main(int argc, char** argv) {
     boundary();
+    stroke_boundary();
     keyboard();
     if (argc > 1 && std::strcmp(argv[1], "--window") == 0) window();
 }

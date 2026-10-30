@@ -163,3 +163,44 @@ fn resource_replacement_retires_tables_and_assets_off_callback() {
     assert!(ports.retired.pop().is_ok());
     assert!(ports.retired.pop().is_ok());
 }
+
+#[test]
+fn source_transport_and_fades_do_not_allocate_on_callback() {
+    use nova_daw::{audio::asset::Asset, contracts::SongTransport};
+    let (mut render, mut ports) = Render::new(48000, Arc::new(Signals::default()));
+    let asset = Arc::new(Asset {
+        id: 7,
+        rate: 48000,
+        frames: vec![[0.3, -0.3]; 48000],
+    });
+    for (id, operation) in [
+        Operation::Asset(asset),
+        Operation::Transport(SongTransport {
+            asset: 7,
+            frame: 24000,
+            generation: 1,
+            playing: true,
+        }),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert!(ports
+            .commands
+            .push(Scheduled {
+                client: 1,
+                id: id as u64 + 1,
+                at: 0,
+                generation: 0,
+                operation
+            })
+            .is_ok());
+    }
+    ALLOCS.with(|v| v.set(0));
+    FREES.with(|v| v.set(0));
+    ACTIVE.with(|v| v.set(true));
+    render.virtual_frames(4096);
+    ACTIVE.with(|v| v.set(false));
+    assert_eq!(ALLOCS.with(Cell::get), 0);
+    assert_eq!(FREES.with(Cell::get), 0);
+}

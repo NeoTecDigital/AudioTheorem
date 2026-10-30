@@ -55,7 +55,7 @@ impl AnalysisHistory {
 impl PcmHistory {
     fn stream_rows(&self, start: u64, end: u64) -> Vec<PcmSlice> {
         let points = self.sample_bins(start, end, HISTORY_PCM_POINTS);
-        let stride = points.len().div_ceil(HISTORY_ROWS).max(64);
+        let stride = points.len().div_ceil(48).max(64);
         points
             .chunks(stride)
             .map(|chunk| PcmSlice {

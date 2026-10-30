@@ -10,7 +10,7 @@
 
 static_assert(sizeof(NovaVertex) == sizeof(nova::Vertex));
 static_assert(offsetof(NovaUpload, transform) == 24);
-static_assert(sizeof(NovaEvents) == 1584);
+static_assert(sizeof(NovaEvents) == 3636);
 static_assert(sizeof(NovaKeyEvent) == 12);
 static_assert(offsetof(NovaEvents, keys) == 48);
 namespace {
@@ -28,6 +28,16 @@ void validate(const NovaUpload* frame) {
         throw std::length_error("Nova vertex capacity or stride");
     if (frame->count % 3 || (frame->count && !frame->vertices))
         throw std::invalid_argument("Nova triangle vertices");
+    if (frame->stroke_count > NOVA_STROKE_CAPACITY || frame->stroke_stride != sizeof(NovaStroke)
+        || (frame->stroke_count && !frame->strokes) || frame->hud_start > frame->count || frame->hud_start % 3)
+        throw std::length_error("Nova stroke capacity/stride or HUD boundary");
+    for (uint32_t i = 0; i < frame->stroke_count; ++i) {
+        const auto& s = frame->strokes[i];
+        for (float v : s.a) if (!std::isfinite(v)) throw std::invalid_argument("Nova nonfinite stroke");
+        for (float v : s.b) if (!std::isfinite(v)) throw std::invalid_argument("Nova nonfinite stroke");
+        for (float v : s.color) if (!std::isfinite(v)) throw std::invalid_argument("Nova nonfinite stroke");
+        if (s.a[3] <= 0 || s.a[3] > 32) throw std::invalid_argument("Nova stroke width");
+    }
     for (float value : frame->transform)
         if (!std::isfinite(value)) throw std::invalid_argument("Nova nonfinite transform");
     for (uint32_t i = 0; i < frame->count; ++i) {
@@ -43,7 +53,7 @@ extern "C" int32_t nova_create(uint32_t width, uint32_t height, void** output, c
     if (!output) return failure(error, capacity, "Nova null output handle");
     *output = nullptr;
     try {
-        auto app = std::make_unique<Nova>(width, height, nova::Pipeline{nova_vertex_shader, nova_fragment_shader});
+        auto app = std::make_unique<Nova>(width, height, nova::Pipeline{nova_vertex_shader, nova_fragment_shader, nova_stroke_vertex_shader, nova_stroke_fragment_shader});
         *output = app.release(); return 0;
     } catch (const std::exception& e) { return failure(error, capacity, e.what()); }
     catch (...) { return failure(error, capacity, "Nova initialization exception"); }
@@ -60,6 +70,9 @@ extern "C" int32_t nova_poll(void* handle, NovaEvents* events, char* error, size
         events->key_count = out.key_count;
         for (uint32_t i = 0; i < out.key_count; ++i)
             events->keys[i] = {out.keys[i].scancode, out.keys[i].down, out.keys[i].modifiers};
+        events->pointer_count = out.pointer_count;
+        for (uint32_t i = 0; i < out.pointer_count; ++i)
+            events->pointers[i] = {out.pointers[i].kind, out.pointers[i].x, out.pointers[i].y, out.pointers[i].delta};
         return 0;
     } catch (const std::exception& e) { return failure(error, capacity, e.what()); }
     catch (...) { return failure(error, capacity, "Nova poll exception"); }
@@ -74,8 +87,9 @@ extern "C" int32_t nova_draw(void* handle, const NovaUpload* upload, char* error
         if (!handle) throw std::invalid_argument("Nova null draw handle");
         validate(upload);
         auto vertices = std::span(reinterpret_cast<const nova::Vertex*>(upload->vertices), upload->count);
-        nova::Uniform uniform; std::memcpy(&uniform, upload->transform, sizeof(uniform));
-        return static_cast<Nova*>(handle)->draw(vertices, uniform) ? 0 : 1;
+        nova::Uniform uniform{}; std::memcpy(uniform.transform, upload->transform, sizeof(upload->transform));
+        auto strokes = std::span(reinterpret_cast<const nova::Stroke*>(upload->strokes), upload->stroke_count);
+        return static_cast<Nova*>(handle)->draw(nova::Geometry{vertices, strokes, upload->hud_start}, uniform) ? 0 : 1;
     } catch (const std::exception& e) { return failure(error, capacity, e.what()); }
     catch (...) { return failure(error, capacity, "Nova draw exception"); }
 }

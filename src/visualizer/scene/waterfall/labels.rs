@@ -7,6 +7,11 @@ use crate::visualizer::{
 
 pub fn draw(mesh: &mut Mesh, state: &Snapshot, history: &StreamHistory) {
     pcm_labels(mesh, history);
+    if state.asset.is_some() {
+        let first = mesh.vertices.len();
+        mesh.text("OUTPUT", -9.6, PCM_BASE + 0.3, 0.023, CYAN);
+        mesh.map_since(first, |[x, y, _]| [x, y, spatial::SHORE_Z]);
+    }
     age_axis(
         mesh,
         state,
@@ -19,7 +24,11 @@ pub fn draw(mesh: &mut Mesh, state: &Snapshot, history: &StreamHistory) {
     );
     let start = mesh.vertices.len();
     mesh.text(
-        "02 / SPECTRUM HISTORY / HZ",
+        if state.asset.is_some() {
+            "02 / SOURCE SONG HISTORY / HZ"
+        } else {
+            "02 / OUTPUT SPECTRUM HISTORY / HZ"
+        },
         -7.4,
         spatial::BASE_Y - 0.4,
         0.04,

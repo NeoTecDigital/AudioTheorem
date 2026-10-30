@@ -1,4 +1,4 @@
-# Nova scene migration / ABI v2
+# Nova scene migration / ABI v3
 
 ## Ownership
 `extern/Nova/Nova.{h,cpp}` now exposes nonblocking `poll()` and `draw()` APIs.
@@ -21,7 +21,7 @@ consumes latest state rather than queueing rendering work. Resize/teardown wait 
 Minimizing skips scene construction/rendering without changing the engine clock.
 
 ## ABI and limits
-- `NOVA_ABI_VERSION = 2`; explicit struct size, vertex stride, count, and capacity.
+- `NOVA_ABI_VERSION = 3`; explicit struct size, vertex stride, count, and capacity.
 - 262,144 triangle-list vertices; upload validates before copying, including finite data.
 - Input pointers are borrowed for that call only. Handle is valid only until one destroy.
 - Handle operations and destruction run on the creating main OS thread. Rust's wrapper
@@ -29,8 +29,8 @@ Minimizing skips scene construction/rendering without changing the engine clock.
 - Errors return negative status with bounded NUL-terminated UTF-8 diagnostic; all C++
   exceptions are contained. Create always clears the output before any work; `unique_ptr`
   cleanup tears down partially initialized state. Destroy-null is safe.
-- Vertex `[position:4, color:4]`: 32 bytes; Upload 88 bytes on supported Linux x86_64;
-  Events 1,584 bytes (128 bounded physical-key events plus focus/reset state). ABI tests check layout and hostile lengths/nonfinite values.
+- Vertex `[position:4, color:4]`: 32 bytes; Upload 112 bytes on supported Linux x86_64;
+  Events 3,636 bytes (128 physical-key and 128 normalized pointer events plus focus/reset state). ABI tests check layout and hostile lengths/nonfinite values.
 - Shader pipelines are configurable through Nova's SPIR-V spans. App shader sources are
   built by `glslc` and embedded in Cargo OUT_DIR, never loaded from workstation paths.
 
@@ -139,7 +139,7 @@ Compact PCM labels sit at the newest end to avoid the screen HUD. The camera is 
 
 History comes from the engine, not a renderer-local frame cache. A minimized/slow/new renderer sees
 the same retained history. Actual measured profiles and original compatibility are preserved; at most
-48 real timestamps are sampled for drawing, not interpolated or repeated into fake prior frames.
+192 real timestamps are sampled for drawing, not interpolated or repeated into fake prior frames.
 PCM rows cover all selected PCM; zoomed-out signed min/max envelopes are labeled, and short selections
 show signed raw samples. Use the existing browser **PCM + spectrum history** duration/look-back
 controls; durations below about64ms expose raw samples at48kHz. At broader views an unchanging tone's
@@ -169,3 +169,33 @@ Deterministic sample/identity-seeded particles leave a bounded disc around the e
 center and converge at their unchanged exact spectral destination. This spread illustrates
 strength, not additional measured frequencies, uncertainty, or acoustic propagation. Event/vertex
 caps and newest-snapshot behavior are unchanged; all new work stays off the audio callback.
+
+
+## Source-song landscape and harmonic compass
+Loaded recordings get a separate progressive, cancellable source index. The full stereo waveform
+is visible before playback; the blue coverage underline marks completed spectral tiles. Missing
+tiles stay empty, not silent data. Source spectra use original file amplitude (pre output gain),
+are labeled **SOURCE SONG / PRE GAIN**, and never feed performed-note evidence or live cadence.
+The source landscape follows asset time; actual output spectrum (compact left lane) and PCM
+(right strip) retain engine time. Pausing a file freezes source position, not the audio callback.
+
+The bottom native overview supports **Play/Pause**, **Fit Song**, **Follow**, **-/+** and wheel zoom.
+Drag the overview to pause the file and inspect cached evidence; release issues one asset-scoped
+seek/resume transaction. White marks acknowledged playback, cyan marks the draft. Native Space
+also toggles playback. Focus loss/cancel cannot auto-resume; Escape remains panic. Source cache
+survives seeks; output history and live cadence still reset across the new audio epoch.
+
+The compass is a camera-independent two-track view: held-note cyan diamonds inside, measured
+spectral energy outside. Three competing group weights form arcs; confidence is separate. Existing
+root/mode candidate text remains in the header. Click a pitch to pin the lower/upper tetrachord
+lens; click its mode label to cycle scale modes; click the center to clear. These marks are scale-
+order memberships, not adjacent fifth sectors, and never retune the instrument. During scrubbing
+only cached source evidence is shown in the compass, explicitly labeled **SOURCE / INSPECTING**.
+
+Generic Nova stroke instances are 48 bytes (a.xyz + pixel width, b.xyz + coordinate-space marker,
+RGBA), capped at 100,000 separately from triangle vertices. Round analytic coverage keeps strokes
+screen-stable without MSAA. Fence-protected buffers hold both streams; world triangles, strokes,
+then HUD are submitted in order. The default history budget is 192 real slices / up to 320 peak-
+preserving bands. Source time summaries are 50ms, not a claim of 50ms low-frequency resolution;
+FFT ages remain attached to each row. Current visible instances are uploaded each frame. Persistent
+GPU tile caching and optional MSAA are not necessary for this path and remain unimplemented.

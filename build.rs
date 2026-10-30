@@ -5,8 +5,8 @@ use std::{
 };
 
 fn shader(root: &Path, out: &Path, stage: &str) -> Vec<u32> {
-    let source = root.join(format!("nova_bridge/shaders/scene.{stage}"));
-    let binary = out.join(format!("scene.{stage}.spv"));
+    let source = root.join(format!("nova_bridge/shaders/{stage}"));
+    let binary = out.join(format!("{stage}.spv"));
     println!("cargo:rerun-if-changed={}", source.display());
     let result = Command::new("glslc")
         .arg(&source)
@@ -26,7 +26,12 @@ fn shader(root: &Path, out: &Path, stage: &str) -> Vec<u32> {
 
 fn embed_shaders(root: &Path, out: &Path) {
     let mut header = String::from("#pragma once\n#include <cstdint>\n");
-    for (stage, name) in [("vert", "vertex"), ("frag", "fragment")] {
+    for (stage, name) in [
+        ("scene.vert", "vertex"),
+        ("scene.frag", "fragment"),
+        ("stroke.vert", "stroke_vertex"),
+        ("stroke.frag", "stroke_fragment"),
+    ] {
         let words = shader(root, out, stage);
         header.push_str(&format!(
             "inline constexpr uint32_t nova_{name}_shader[] = {{"

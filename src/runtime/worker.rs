@@ -1,4 +1,4 @@
-use super::Request;
+use super::{source::SourceCache, Request};
 use crate::{
     analysis::Analyzer,
     audio::{
@@ -17,10 +17,14 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 pub(super) enum Pending {
     Command(Command, oneshot::Sender<Result<Ack, String>>),
-    Import(u64, f64, oneshot::Sender<Result<u64, String>>),
+    Import(
+        Arc<crate::audio::asset::Asset>,
+        oneshot::Sender<Result<u64, String>>,
+    ),
 }
 type Deferred = (u64, Command, oneshot::Sender<Result<Ack, String>>);
 struct Worker {
+    source: SourceCache,
     ports: Ports,
     signals: Arc<Signals>,
     snapshot: Snapshot,
@@ -38,9 +42,11 @@ pub fn run(
     signals: Arc<Signals>,
     publish: watch::Sender<Arc<Snapshot>>,
     snapshot: Snapshot,
+    source: SourceCache,
 ) {
     let analyzer = Analyzer::new(snapshot.device.sample_rate);
     let mut worker = Worker {
+        source,
         ports,
         signals,
         snapshot,
@@ -91,8 +97,7 @@ impl Worker {
                     let _ = reply.send(Err("an asset is still awaiting the audio device".into()));
                     return;
                 }
-                let duration = asset.frames.len() as f64 / asset.rate as f64;
-                let id = asset.id;
+
                 self.internal += 1;
                 let at = self.signals.sample.load(Ordering::Acquire);
                 let op = Scheduled {
@@ -100,14 +105,12 @@ impl Worker {
                     id: self.internal,
                     at,
                     generation: self.signals.panic.load(Ordering::Acquire),
-                    operation: Operation::Asset(asset),
+                    operation: Operation::Asset(asset.clone()),
                 };
                 match self.enqueue(op, false) {
                     Ok(()) => {
-                        self.pending.insert(
-                            (client, self.internal),
-                            Pending::Import(id, duration, reply),
-                        );
+                        self.pending
+                            .insert((client, self.internal), Pending::Import(asset, reply));
                     }
                     Err(e) => {
                         let _ = reply.send(Err(e));
@@ -253,6 +256,7 @@ impl Worker {
             }
             Action::Playback { playing } => Operation::Playback(*playing),
             Action::Seek { seconds } => Operation::Seek(*seconds),
+            Action::Transport { transport } => Operation::Transport(*transport),
             Action::Panic => Operation::Panic,
             _ => Operation::Reset,
         }
@@ -296,6 +300,7 @@ impl Worker {
                 .collect();
             self.snapshot.playing = packet.playing;
             self.snapshot.asset = packet.asset;
+            self.snapshot.playback_frame = packet.position;
             self.snapshot.playback_seconds =
                 packet.position as f64 / self.snapshot.device.sample_rate as f64;
             if let Some(frame) = frame {
@@ -317,12 +322,13 @@ impl Worker {
                 }
                 let _ = reply.send(Ok(ack));
             }
-            Pending::Import(id, duration, reply) => {
+            Pending::Import(asset, reply) => {
                 self.snapshot.revision += 1;
                 if error.is_none() {
-                    self.snapshot.duration_seconds = duration;
+                    self.snapshot.duration_seconds = asset.frames.len() as f64 / asset.rate as f64;
+                    self.source.load(asset.clone());
                 }
-                let _ = reply.send(error.map_or(Ok(id), Err));
+                let _ = reply.send(error.map_or(Ok(asset.id), Err));
             }
         }
     }
@@ -363,6 +369,7 @@ impl Worker {
     }
 
     fn metrics(&mut self) {
+        self.snapshot.song = self.source.latest(self.snapshot.asset);
         self.snapshot.device.actual_buffer = self.signals.buffer.load(Ordering::Relaxed) as u32;
         self.snapshot.device.analysis_drops = self.signals.drops.load(Ordering::Relaxed);
         self.snapshot.device.errors = self.signals.errors.load(Ordering::Relaxed);

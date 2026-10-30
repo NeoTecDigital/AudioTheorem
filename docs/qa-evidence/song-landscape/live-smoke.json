@@ -1,0 +1,28 @@
+{
+  "device": {
+    "actual_buffer": 99,
+    "analysis_drops": 0,
+    "available": true,
+    "callback_max_us": 415,
+    "channels": 2,
+    "errors": 0,
+    "format": "f32",
+    "name": "default",
+    "requested_buffer": 256,
+    "sample_rate": 48000
+  },
+  "overloads": 0,
+  "epoch": 4,
+  "duration_seconds": 24.0,
+  "playback_frame": 941522,
+  "checks": [
+    "source before playback",
+    "native drag pause/seek/resume",
+    "asset identity",
+    "new output epoch",
+    "paused source / advancing engine",
+    "both modes",
+    "native keyboard / independent logical marks",
+    "native Escape panic"
+  ]
+}

@@ -1,5 +1,6 @@
 //! Main-thread native input; ordered bounded requests, independent client cancellation.
 mod keyboard;
+pub mod timeline;
 use crate::{
     contracts::{Ack, Action, Command, View},
     runtime::Handle,
@@ -15,10 +16,12 @@ use tokio::sync::oneshot;
 struct Pending {
     response: oneshot::Receiver<Result<Ack, String>>,
     started: Instant,
+    transport: Option<u64>,
 }
 
 pub struct Controller {
     handle: Handle,
+    pub timeline: timeline::Timeline,
     keyboard: Keyboard,
     client: u64,
     next_id: u64,
@@ -39,6 +42,7 @@ impl Controller {
     pub fn new(handle: Handle) -> Self {
         Self {
             handle,
+            timeline: timeline::Timeline::default(),
             keyboard: Keyboard::default(),
             client: 32,
             next_id: 0,
@@ -82,6 +86,44 @@ impl Controller {
         }
     }
 
+    pub fn navigation(
+        &mut self,
+        events: &[timeline::PointerEvent],
+        keys: &[KeyEvent],
+        state: &crate::contracts::Snapshot,
+        size: [u32; 2],
+        reset: bool,
+    ) -> bool {
+        self.timeline.sync(state);
+        if !self.focused || reset || keys.iter().any(|k| k.scancode == 41 && k.down != 0) {
+            return true;
+        }
+        let mut captured = false;
+        for &event in events {
+            let event = timeline::PointerEvent {
+                y: timeline::pointer_y(event.y, size),
+                ..event
+            };
+            let (used, action) = self
+                .timeline
+                .pointer(event, state, timeline::hud_width(size));
+            captured |= used;
+            if let Some(action) = action {
+                self.send(action);
+            }
+        }
+        if keys
+            .iter()
+            .any(|k| k.scancode == 44 && k.down != 0 && k.modifiers & 0x0fc0 == 0)
+        {
+            if let Some(action) = self.timeline.toggle(state) {
+                self.send(action);
+            }
+        }
+        self.handle.preview(self.timeline.cursor(state));
+        captured
+    }
+
     pub fn view(&mut self, view: View) {
         // Don't accumulate camera requests while waiting for acknowledged values.
         if self.pending.is_empty() {
@@ -94,6 +136,10 @@ impl Controller {
             self.fail("Native command backlog; held notes released".into());
             return false;
         }
+        let transport = match &action {
+            Action::Transport { transport } => Some(transport.generation),
+            _ => None,
+        };
         self.next_id += 1;
         let command = Command {
             id: self.next_id,
@@ -105,6 +151,7 @@ impl Controller {
                 self.pending.push_back(Pending {
                     response,
                     started: Instant::now(),
+                    transport,
                 });
                 true
             }
@@ -124,7 +171,10 @@ impl Controller {
                 Err(_) if front.started.elapsed() < Duration::from_secs(5) => break,
                 Err(_) => Err("Native acknowledgement timeout".into()),
             };
-            self.pending.pop_front();
+            let done = self.pending.pop_front().unwrap();
+            if let Some(generation) = done.transport {
+                self.timeline.acknowledge(generation);
+            }
             if let Err(error) = outcome {
                 self.fail(error);
                 break;
@@ -145,6 +195,9 @@ impl Controller {
         self.client += 32;
         self.keyboard.forget();
         self.pending.clear();
+        if self.timeline.cancel() {
+            self.send(crate::contracts::Action::Playback { playing: false });
+        }
     }
 }
 

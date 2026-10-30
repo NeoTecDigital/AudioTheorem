@@ -40,6 +40,7 @@ struct Context {
     VkRenderPass pass = VK_NULL_HANDLE;
     VkPipelineLayout layout = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;
+    VkPipeline stroke_pipeline = VK_NULL_HANDLE;
     VkCommandPool pool = VK_NULL_HANDLE;
     std::array<Frame, 2> frames;
     Presentation present;
@@ -55,6 +56,6 @@ void init_frames(Context&);
 void init_framebuffers(Context&);
 void destroy_present(Context&);
 bool resize(Context&);
-bool draw(Context&, std::span<const Vertex>, const Uniform&);
+bool draw(Context&, Geometry, const Uniform&);
 Events poll(Context&);
 }

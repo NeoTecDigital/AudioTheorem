@@ -1,5 +1,6 @@
 #include "context.h"
 #include "input.h"
+#include "pointer.h"
 #include <SDL2/SDL_vulkan.h>
 
 namespace nova {
@@ -27,6 +28,7 @@ static void event(Context& c, Events& out, const SDL_Event& e) {
     if (e.type == SDL_QUIT) c.closed = true;
     if (e.type == SDL_WINDOWEVENT) window_event(c, e);
     append_input(out, e);
+    append_pointer(out, e, c.window);
     if (e.type == SDL_MOUSEWHEEL) out.zoom += float(e.wheel.y);
     if (e.type != SDL_MOUSEMOTION || !(e.motion.state & SDL_BUTTON_LMASK)) return;
     out.orbit_x += float(e.motion.xrel);
@@ -44,6 +46,7 @@ Events poll(Context& c) {
     out.minimized = c.minimized || w == 0 || h == 0;
     out.close = c.closed;
     out.focused = (SDL_GetWindowFlags(c.window) & SDL_WINDOW_INPUT_FOCUS) != 0;
+    if (!out.focused || out.input_reset) SDL_CaptureMouse(SDL_FALSE);
     return out;
 }
 }

@@ -13,8 +13,9 @@ Nova::Nova(uint32_t width, uint32_t height, nova::Pipeline pipeline)
 }
 Nova::~Nova() = default;
 nova::Events Nova::poll() { return nova::poll(*context); }
-bool Nova::draw(std::span<const nova::Vertex> vertices, const nova::Uniform& uniform) {
+bool Nova::draw(nova::Geometry geometry, const nova::Uniform& uniform) {
     nova::check_thread(*context);
-    if (vertices.size() > nova::vertex_capacity) throw std::length_error("Nova vertex capacity");
-    return nova::draw(*context, vertices, uniform);
+    if (geometry.vertices.size() > nova::vertex_capacity || geometry.strokes.size() > nova::stroke_capacity)
+        throw std::length_error("Nova geometry capacity");
+    return nova::draw(*context, geometry, uniform);
 }

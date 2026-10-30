@@ -1,4 +1,8 @@
-use super::{camera::Camera, mesh::Vertex, scene::Scene};
+use super::{
+    camera::Camera,
+    mesh::{Stroke, Vertex},
+    scene::Scene,
+};
 use crate::{
     contracts::Snapshot,
     native_input::{Controller, KeyEvent},
@@ -19,6 +23,10 @@ struct Upload {
     count: u32,
     stride: u32,
     transform: [f32; 16],
+    strokes: *const Stroke,
+    stroke_count: u32,
+    stroke_stride: u32,
+    hud_start: u32,
 }
 
 #[repr(C)]
@@ -36,6 +44,8 @@ struct Events {
     input_reset: u32,
     key_count: u32,
     keys: [KeyEvent; 128],
+    pointer_count: u32,
+    pointers: [crate::native_input::timeline::PointerEvent; 128],
 }
 
 extern "C" {
@@ -110,19 +120,34 @@ impl Visualizer {
         if events.minimized != 0 {
             return Ok(true);
         }
-        if let Some(view) =
-            super::camera::request(&snapshot.view, events.orbit_x, events.orbit_y, events.zoom)
-        {
+        let captured = input.navigation(
+            &events.pointers[..events.pointer_count.min(128) as usize],
+            &events.keys[..count],
+            snapshot,
+            [events.width, events.height],
+            events.input_reset != 0,
+        );
+        if let Some(view) = super::camera::request(
+            &snapshot.view,
+            if captured { 0.0 } else { events.orbit_x },
+            if captured { 0.0 } else { events.orbit_y },
+            if captured { 0.0 } else { events.zoom },
+        ) {
             input.view(view);
         }
         let transform = self
             .camera
             .matrix(&snapshot.view, events.width, events.height);
         let start = std::time::Instant::now();
-        let vertices =
-            self.scene
-                .build_frame(snapshot, events.width, events.height, &input.status());
-        draw(self.handle, vertices, transform)?;
+        self.scene.build_navigation(
+            snapshot,
+            events.width,
+            events.height,
+            &input.status(),
+            &input.timeline,
+        );
+        let (vertices, strokes, hud_start) = self.scene.geometry();
+        draw(self.handle, vertices, strokes, hud_start, transform)?;
         self.scene.adjust_quality(start.elapsed());
         Ok(true)
     }
@@ -131,7 +156,7 @@ impl Visualizer {
 fn poll(handle: NonNull<c_void>) -> Result<Events, String> {
     let mut error = [0; 256];
     let mut events = Events {
-        version: 2,
+        version: 3,
         size: size_of::<Events>() as u32,
         // All fields are plain numeric C values; zero is valid.
         ..unsafe { std::mem::zeroed() }
@@ -148,15 +173,25 @@ fn poll(handle: NonNull<c_void>) -> Result<Events, String> {
     Ok(events)
 }
 
-fn draw(handle: NonNull<c_void>, vertices: &[Vertex], transform: [f32; 16]) -> Result<(), String> {
+fn draw(
+    handle: NonNull<c_void>,
+    vertices: &[Vertex],
+    strokes: &[Stroke],
+    hud_start: usize,
+    transform: [f32; 16],
+) -> Result<(), String> {
     let mut error = [0; 256];
     let upload = Upload {
-        version: 2,
+        version: 3,
         size: size_of::<Upload>() as u32,
         vertices: vertices.as_ptr(),
         count: vertices.len() as u32,
         stride: size_of::<Vertex>() as u32,
         transform,
+        strokes: strokes.as_ptr(),
+        stroke_count: strokes.len() as u32,
+        stroke_stride: size_of::<Stroke>() as u32,
+        hud_start: hud_start as u32,
     };
     let code = unsafe { nova_draw(handle.as_ptr(), &upload, error.as_mut_ptr(), error.len()) };
     result(code, &error)?;
@@ -176,8 +211,8 @@ mod tests {
     #[test]
     fn abi_layout_is_versioned() {
         assert_eq!(size_of::<Vertex>(), 32);
-        assert_eq!(size_of::<Events>(), 1584);
-        assert_eq!(size_of::<Upload>(), 88);
+        assert_eq!(size_of::<Events>(), 3636);
+        assert_eq!(size_of::<Upload>(), 112);
         assert_eq!(std::mem::offset_of!(Upload, transform), 24);
     }
 
@@ -189,12 +224,16 @@ mod tests {
         };
         assert!(validate(std::ptr::null(), &mut error) < 0);
         let mut frame = Upload {
-            version: 2,
-            size: 88,
+            version: 3,
+            size: 112,
             vertices: std::ptr::null(),
             count: 262145,
             stride: 32,
             transform: [0.0; 16],
+            strokes: std::ptr::null(),
+            stroke_count: 0,
+            stroke_stride: 48,
+            hud_start: 0,
         };
         assert!(validate(&frame, &mut error) < 0);
         frame.count = 0;

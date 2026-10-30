@@ -2,7 +2,7 @@
 #include <cstring>
 
 namespace nova {
-static void record(Context& c, Frame& f, uint32_t image, uint32_t count, const Uniform& uniform) {
+static void record(Context& c, Frame& f, uint32_t image, Geometry geometry, const Uniform& uniform) {
     check(vkResetCommandBuffer(f.command, 0), "Nova reset commands");
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     check(vkBeginCommandBuffer(f.command, &begin), "Nova begin commands");
@@ -19,7 +19,14 @@ static void record(Context& c, Frame& f, uint32_t image, uint32_t count, const U
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(f.command, 0, 1, &f.vertices, &offset);
     vkCmdPushConstants(f.command, c.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uniform), &uniform);
-    vkCmdDraw(f.command, count, 1, 0, 0);
+    vkCmdDraw(f.command, geometry.hud_start, 1, 0, 0);
+    vkCmdBindPipeline(f.command, VK_PIPELINE_BIND_POINT_GRAPHICS, c.stroke_pipeline);
+    offset = vertex_capacity * sizeof(Vertex);
+    vkCmdBindVertexBuffers(f.command, 0, 1, &f.vertices, &offset);
+    vkCmdDraw(f.command, 6, uint32_t(geometry.strokes.size()), 0, 0);
+    vkCmdBindPipeline(f.command, VK_PIPELINE_BIND_POINT_GRAPHICS, c.pipeline);
+    offset = 0; vkCmdBindVertexBuffers(f.command, 0, 1, &f.vertices, &offset);
+    vkCmdDraw(f.command, uint32_t(geometry.vertices.size()) - geometry.hud_start, 1, geometry.hud_start, 0);
     vkCmdEndRenderPass(f.command);
     check(vkEndCommandBuffer(f.command), "Nova end commands");
 }
@@ -39,7 +46,7 @@ static void submit(Context& c, Frame& f, uint32_t image) {
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) c.resized = true;
     else check(result, "Nova present");
 }
-bool draw(Context& c, std::span<const Vertex> vertices, const Uniform& uniform) {
+bool draw(Context& c, Geometry geometry, const Uniform& uniform) {
     if (c.closed || c.minimized) return false;
     if (c.resized && !resize(c)) return false;
     Frame& f = c.frames[c.frame];
@@ -51,8 +58,12 @@ bool draw(Context& c, std::span<const Vertex> vertices, const Uniform& uniform) 
     if (acquired == VK_NOT_READY || acquired == VK_TIMEOUT) return false;
     if (acquired == VK_ERROR_OUT_OF_DATE_KHR) { c.resized = true; return false; }
     if (acquired != VK_SUBOPTIMAL_KHR) check(acquired, "Nova acquire");
+    const auto vertices = geometry.vertices;
     if (vertices.size_bytes()) std::memcpy(f.mapped, vertices.data(), vertices.size_bytes());
-    record(c, f, image, uint32_t(vertices.size()), uniform);
+    auto* strokes = static_cast<char*>(f.mapped) + vertex_capacity * sizeof(Vertex);
+    if (geometry.strokes.size_bytes()) std::memcpy(strokes, geometry.strokes.data(), geometry.strokes.size_bytes());
+    auto sized = uniform; sized.viewport[0] = float(c.present.extent.width); sized.viewport[1] = float(c.present.extent.height);
+    record(c, f, image, geometry, sized);
     submit(c, f, image);
     c.frame = (c.frame + 1) % c.frames.size();
     return true;

@@ -17,7 +17,7 @@ pub fn request(view: &View, dx: f32, dy: f32, wheel: f32) -> Option<View> {
 impl Camera {
     pub fn matrix(&self, view: &View, width: u32, height: u32) -> [f32; 16] {
         let aspect = width.max(1) as f32 / height.max(1) as f32;
-        let distance = view.distance.clamp(9.0, 50.0);
+        let distance = view.distance.clamp(9.0, 50.0) * (1.4 / aspect).max(1.0);
         // Both modes are spatial. Neutral controls frame the wall and forward stream field.
         let mut model = rotation(view.yaw - 0.65, view.pitch * 0.7);
         model[13] = 0.8;

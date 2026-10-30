@@ -1,4 +1,5 @@
 //! Real-time boundary: fixed storage, moved resources retired by coordinator.
+mod file;
 use super::{
     asset::Asset,
     synth::Synth,
@@ -19,6 +20,7 @@ pub enum Operation {
     Asset(Arc<Asset>),
     Playback(bool),
     Seek(f64),
+    Transport(crate::contracts::SongTransport),
     Reset,
     Panic,
 }
@@ -99,6 +101,8 @@ pub struct Render {
     asset: Option<Arc<Asset>>,
     position: usize,
     playing: bool,
+    transport_generations: [(u64, u64, u64); MAX_CLIENTS],
+    fade: file::Fade,
     gap: bool,
 }
 
@@ -135,6 +139,8 @@ impl Render {
             asset: None,
             position: 0,
             playing: false,
+            transport_generations: [(0, 0, 0); MAX_CLIENTS],
+            fade: file::Fade::new(rate),
             gap: false,
         };
         (render, ports)
@@ -153,6 +159,7 @@ impl Render {
         let generation = self.signals.panic.load(Ordering::Acquire);
         if generation != self.generation {
             self.synth.panic();
+            self.fade.silence();
             self.playing = false;
             self.generation = generation;
             self.signals
@@ -225,20 +232,9 @@ impl Render {
             sample: self.sample,
             error: None,
         };
-        if command.client != 0
-            && command.client <= self.closed[command.client as usize % MAX_CLIENTS]
-        {
-            ack.error = Some("client disconnected");
+        if let Some(error) = self.reject(&command) {
+            ack.error = Some(error);
             self.retire_operation(command.operation);
-            return ack;
-        }
-        if command.generation != self.generation
-            && matches!(
-                command.operation,
-                Operation::Start(_) | Operation::Playback(true)
-            )
-        {
-            ack.error = Some("cancelled by panic");
             return ack;
         }
         match command.operation {
@@ -254,19 +250,43 @@ impl Render {
                 if let Some(old) = self.asset.replace(asset) {
                     let _ = self.retired.push(Retired::Asset(old));
                 }
+                self.fade.reset();
                 self.position = 0;
                 self.playing = false;
                 self.discontinuity();
             }
-            Operation::Playback(playing) => self.playing = playing && self.asset.is_some(),
+            Operation::Playback(playing) => {
+                self.fade.reset();
+                self.playing = playing && self.asset.is_some();
+            }
+            Operation::Transport(t) => ack.error = self.transport(command.client, t).err(),
             Operation::Seek(seconds) => self.seek(seconds),
             Operation::Reset => self.discontinuity(),
             Operation::Panic => {
                 self.synth.panic();
+                self.fade.silence();
                 self.playing = false;
             }
         }
         ack
+    }
+
+    fn reject(&self, command: &Scheduled) -> Option<&'static str> {
+        if command.client != 0
+            && command.client <= self.closed[command.client as usize % MAX_CLIENTS]
+        {
+            return Some("client disconnected");
+        }
+        let audible = matches!(
+            command.operation,
+            Operation::Start(_)
+                | Operation::Playback(true)
+                | Operation::Transport(crate::contracts::SongTransport { playing: true, .. })
+        );
+        if command.generation != self.generation && audible {
+            return Some("cancelled by panic");
+        }
+        None
     }
 
     fn retire_operation(&mut self, op: Operation) {
@@ -281,34 +301,12 @@ impl Render {
         }
     }
 
-    fn seek(&mut self, seconds: f64) {
-        if let Some(asset) = &self.asset {
-            self.position = ((seconds * asset.rate as f64) as usize).min(asset.frames.len());
-        }
-        self.discontinuity();
-    }
-
     fn discontinuity(&mut self) {
         self.epoch += 1;
         self.gap = true;
         self.block.len = 0;
         self.block.voices.fill(VoiceObservation::default());
         self.block.processing = false;
-    }
-
-    fn file_sample(&mut self) -> [f32; 2] {
-        if !self.playing {
-            return [0.0; 2];
-        }
-        let Some(asset) = &self.asset else {
-            return [0.0; 2];
-        };
-        let Some(frame) = asset.frames.get(self.position) else {
-            self.playing = false;
-            return [0.0; 2];
-        };
-        self.position += 1;
-        [frame[0] * self.synth.gain(), frame[1] * self.synth.gain()]
     }
 
     fn accumulate_logical(&mut self) {

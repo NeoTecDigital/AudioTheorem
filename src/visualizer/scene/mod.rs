@@ -1,3 +1,4 @@
+mod compass;
 mod emission;
 mod field;
 mod history;
@@ -7,6 +8,7 @@ mod matrix_layout;
 mod particles;
 #[cfg(test)]
 mod selection;
+mod song;
 mod spatial;
 mod traces;
 mod waterfall;
@@ -22,6 +24,7 @@ pub struct Scene {
     cadence_history: history::CadenceHistory,
     quality: usize,
     fast_frames: usize,
+    hud_start: usize,
 }
 
 impl Scene {
@@ -33,6 +36,7 @@ impl Scene {
             cadence_history: history::CadenceHistory::new(),
             quality: 4096,
             fast_frames: 0,
+            hud_start: 0,
         }
     }
 
@@ -52,12 +56,31 @@ impl Scene {
         )
     }
 
+    #[cfg(test)]
     pub fn build_frame(
         &mut self,
         state: &Snapshot,
         width: u32,
         height: u32,
         input: &crate::native_input::Status<'_>,
+    ) -> &[Vertex] {
+        let mut navigation = crate::native_input::timeline::Timeline::default();
+        navigation.sync(state);
+        self.build_navigation(state, width, height, input, &navigation)
+    }
+
+    #[cfg(feature = "native")]
+    pub fn geometry(&self) -> (&[Vertex], &[super::mesh::Stroke], usize) {
+        (&self.mesh.vertices, &self.mesh.strokes, self.hud_start)
+    }
+
+    pub fn build_navigation(
+        &mut self,
+        state: &Snapshot,
+        width: u32,
+        height: u32,
+        input: &crate::native_input::Status<'_>,
+        navigation: &crate::native_input::timeline::Timeline,
     ) -> &[Vertex] {
         self.mesh.clear();
         self.hud.clear();
@@ -76,17 +99,32 @@ impl Scene {
             labels::analysis(&mut self.mesh, state, frame);
             self.particles.draw(&mut self.mesh, state, frame, budget);
         }
+        song::draw(&mut self.mesh, state, navigation);
         hud::draw(
             &mut self.hud,
             state,
             input,
             [width, height],
             &mut self.cadence_history,
+            navigation,
         );
+        self.finish(state, width, height)
+    }
+
+    fn finish(&mut self, state: &Snapshot, width: u32, height: u32) -> &[Vertex] {
+        if self.mesh.overflow
+            || self.mesh.vertices.len() + self.hud.vertices.len() > super::mesh::CAPACITY
+        {
+            self.mesh.overflow = true;
+            self.quality = (self.quality / 2).max(128);
+            hud::budget_warning(&mut self.hud, [width, height]);
+        }
         let available = super::mesh::CAPACITY.saturating_sub(self.hud.vertices.len()) / 3 * 3;
         self.mesh.vertices.truncate(available);
         let transform = super::camera::Camera.matrix(&state.view, width, height);
         self.mesh.sort_world(transform);
+        self.mesh.sort_strokes(transform);
+        self.hud_start = self.mesh.vertices.len();
         self.mesh.vertices.extend_from_slice(&self.hud.vertices);
         &self.mesh.vertices
     }

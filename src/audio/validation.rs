@@ -79,6 +79,15 @@ pub fn command(c: &Command, now: u64, rate: u32) -> Result<(), String> {
         Action::Seek { seconds } if !seconds.is_finite() || !(0.0..=600.0).contains(seconds) => {
             return Err("seek must be finite, 0..600 seconds".into());
         }
+        Action::Transport { transport: t }
+            if t.asset == 0
+                || t.asset > 9_007_199_254_740_991
+                || t.generation == 0
+                || t.generation > 9_007_199_254_740_991
+                || t.frame > rate as u64 * 600 =>
+        {
+            return Err("invalid asset-scoped transport".into());
+        }
         _ => {}
     }
     Ok(())

@@ -16,7 +16,10 @@ pub struct PcmHistory {
 
 impl PcmHistory {
     pub fn new(rate: u32) -> Self {
-        let capacity = rate as usize * config::HISTORY_SECONDS;
+        Self::with_capacity(rate as usize * config::HISTORY_SECONDS)
+    }
+
+    pub(super) fn with_capacity(capacity: usize) -> Self {
         Self {
             samples: vec![[0.0; 2]; capacity],
             write: 0,
