@@ -1,5 +1,6 @@
 //! Main-thread native input; ordered bounded requests, independent client cancellation.
 mod keyboard;
+pub mod menu;
 pub mod timeline;
 use crate::{
     contracts::{Ack, Action, Command, View},
@@ -22,6 +23,7 @@ struct Pending {
 pub struct Controller {
     handle: Handle,
     pub timeline: timeline::Timeline,
+    menu: menu::Menu,
     keyboard: Keyboard,
     client: u64,
     next_id: u64,
@@ -31,6 +33,7 @@ pub struct Controller {
 }
 
 pub struct Status<'a> {
+    pub menu_open: bool,
     pub octave: u8,
     pub instrument: u8,
     pub focused: bool,
@@ -43,6 +46,7 @@ impl Controller {
         Self {
             handle,
             timeline: timeline::Timeline::default(),
+            menu: menu::Menu::default(),
             keyboard: Keyboard::default(),
             client: 32,
             next_id: 0,
@@ -54,6 +58,7 @@ impl Controller {
 
     pub fn status(&self) -> Status<'_> {
         Status {
+            menu_open: self.menu.open,
             octave: self.keyboard.octave,
             instrument: self.keyboard.instrument,
             focused: self.focused,
@@ -72,6 +77,10 @@ impl Controller {
             return;
         }
         for &key in keys {
+            if key.scancode == 43 && key.down != 0 && key.modifiers & 0x0fc0 == 0 {
+                self.menu.open = !self.menu.open;
+                self.cancel_scrub();
+            }
             let Some(action) = self.keyboard.event(key) else {
                 continue;
             };
@@ -98,19 +107,9 @@ impl Controller {
         if !self.focused || reset || keys.iter().any(|k| k.scancode == 41 && k.down != 0) {
             return true;
         }
-        let mut captured = false;
+        let mut captured = self.menu.open;
         for &event in events {
-            let event = timeline::PointerEvent {
-                y: timeline::pointer_y(event.y, size),
-                ..event
-            };
-            let (used, action) = self
-                .timeline
-                .pointer(event, state, timeline::hud_width(size));
-            captured |= used;
-            if let Some(action) = action {
-                self.send(action);
-            }
+            captured |= self.pointer(event, state, size);
         }
         if keys
             .iter()
@@ -122,6 +121,67 @@ impl Controller {
         }
         self.handle.preview(self.timeline.cursor(state));
         captured
+    }
+
+    fn pointer(
+        &mut self,
+        event: timeline::PointerEvent,
+        state: &crate::contracts::Snapshot,
+        size: [u32; 2],
+    ) -> bool {
+        let width = timeline::hud_width(size);
+        let event = timeline::PointerEvent {
+            y: timeline::pointer_y(event.y, size),
+            ..event
+        };
+        let items = menu::items(state, &self.status(), width);
+        let was_open = self.menu.open;
+        let (used, choice) = self.menu.pointer(event, width, &items);
+        if !was_open && self.menu.open {
+            self.cancel_scrub();
+        }
+        if used {
+            if let Some(choice) = choice {
+                self.choose(choice, state);
+            }
+            return true;
+        }
+        let (used, action) = self.timeline.pointer(event, state, width);
+        if let Some(action) = action {
+            self.send(action);
+        }
+        used
+    }
+
+    fn cancel_scrub(&mut self) {
+        if self.timeline.cancel() {
+            self.send(Action::Playback { playing: false });
+        }
+    }
+
+    fn choose(&mut self, choice: menu::Choice, state: &crate::contracts::Snapshot) {
+        use menu::Choice::*;
+        let action = match choice {
+            Sound(delta) => {
+                self.keyboard.instrument =
+                    (self.keyboard.instrument as i8 + delta).rem_euclid(6) as u8;
+                None
+            }
+            Octave(delta) => {
+                self.keyboard.octave = (self.keyboard.octave as i8 + delta).clamp(0, 6) as u8;
+                None
+            }
+            Panic => {
+                self.handle.panic();
+                self.reset();
+                None
+            }
+            Play => self.timeline.toggle(state),
+            _ => menu::action(choice, state),
+        };
+        if let Some(action) = action {
+            self.send(action);
+        }
     }
 
     pub fn view(&mut self, view: View) {
@@ -194,6 +254,7 @@ impl Controller {
         self.handle.disconnect(self.client);
         self.client += 32;
         self.keyboard.forget();
+        self.menu.cancel();
         self.pending.clear();
         if self.timeline.cancel() {
             self.send(crate::contracts::Action::Playback { playing: false });

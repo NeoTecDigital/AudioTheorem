@@ -5,6 +5,7 @@ mod history;
 mod hud;
 mod labels;
 mod matrix_layout;
+mod menu;
 mod particles;
 #[cfg(test)]
 mod selection;
@@ -47,6 +48,7 @@ impl Scene {
             1920,
             1080,
             &crate::native_input::Status {
+                menu_open: false,
                 octave: 4,
                 instrument: 0,
                 focused: true,
@@ -70,8 +72,13 @@ impl Scene {
     }
 
     #[cfg(feature = "native")]
-    pub fn geometry(&self) -> (&[Vertex], &[super::mesh::Stroke], usize) {
-        (&self.mesh.vertices, &self.mesh.strokes, self.hud_start)
+    pub fn geometry(&self) -> super::nova_ffi::Geometry<'_> {
+        super::nova_ffi::Geometry {
+            vertices: &self.mesh.vertices,
+            strokes: &self.mesh.strokes,
+            surface: &self.mesh.surface,
+            hud_start: self.hud_start,
+        }
     }
 
     pub fn build_navigation(
@@ -113,6 +120,7 @@ impl Scene {
 
     fn finish(&mut self, state: &Snapshot, width: u32, height: u32) -> &[Vertex] {
         if self.mesh.overflow
+            || self.mesh.surface.overflow
             || self.mesh.vertices.len() + self.hud.vertices.len() > super::mesh::CAPACITY
         {
             self.mesh.overflow = true;
@@ -124,6 +132,7 @@ impl Scene {
         let transform = super::camera::Camera.matrix(&state.view, width, height);
         self.mesh.sort_world(transform);
         self.mesh.sort_strokes(transform);
+        self.mesh.surface.sort(transform);
         self.hud_start = self.mesh.vertices.len();
         self.mesh.vertices.extend_from_slice(&self.hud.vertices);
         &self.mesh.vertices

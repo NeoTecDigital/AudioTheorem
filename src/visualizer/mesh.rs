@@ -1,6 +1,8 @@
 mod font;
 mod strokes;
+mod surface;
 pub use strokes::{Stroke, STROKE_CAPACITY};
+pub use surface::Surface;
 
 pub const CAPACITY: usize = 262144;
 pub type Color = [f32; 4];
@@ -19,6 +21,7 @@ pub struct Vertex {
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub strokes: Vec<Stroke>,
+    pub surface: Surface,
     pub overflow: bool,
 }
 
@@ -27,12 +30,14 @@ impl Mesh {
         Self {
             vertices: Vec::with_capacity(CAPACITY),
             strokes: Vec::with_capacity(STROKE_CAPACITY),
+            surface: Surface::default(),
             overflow: false,
         }
     }
     pub fn clear(&mut self) {
         self.vertices.clear();
         self.strokes.clear();
+        self.surface.clear();
         self.overflow = false;
     }
 

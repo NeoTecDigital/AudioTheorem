@@ -29,6 +29,7 @@ pub fn draw(
         0.0,
         [0.012, 0.024, 0.032, 0.94],
     );
+    logo(mesh);
     heading(mesh, state, width);
     keyboard(mesh, input);
     legend(mesh, width);
@@ -46,7 +47,22 @@ pub fn draw(
     }
     super::compass::draw(mesh, state, navigation);
     super::song::hud(mesh, state, navigation, width);
+    super::menu::draw(mesh, state, input, width);
     map_screen(mesh, start, size);
+}
+
+fn logo(mesh: &mut Mesh) {
+    let start = mesh.vertices.len();
+    mesh.rect(18.0, 650.0, 58.0, 58.0, 0.0, INK);
+    for vertex in &mut mesh.vertices[start..] {
+        vertex.color = [
+            (vertex.position[0] - 18.0) / 58.0,
+            1.0 - (vertex.position[1] - 650.0) / 58.0,
+            0.0,
+            1.0,
+        ];
+        vertex.position[3] = -2.0;
+    }
 }
 
 fn map_screen(mesh: &mut Mesh, start: usize, size: [u32; 2]) {
@@ -61,7 +77,11 @@ fn map_screen(mesh: &mut Mesh, start: usize, size: [u32; 2]) {
             vertex.position[0] / width * 2.0 - 1.0,
             1.0 - vertex.position[1] / height * 2.0,
             0.0,
-            -1.0,
+            if vertex.position[3] == -2.0 {
+                -2.0
+            } else {
+                -1.0
+            },
         ];
     }
 }
@@ -72,8 +92,8 @@ fn heading(mesh: &mut Mesh, state: &Snapshot, width: f32) {
     } else {
         "PRECISE"
     };
-    mesh.text(&format!("HARMONIC / {mode}"), 18.0, 701.0, 1.8, INK);
-    mesh.text(&audio_status(state), 18.0, 680.0, 1.20, MUTED);
+    mesh.text(&format!("AUDIO THEOREM / {mode}"), 86.0, 701.0, 1.8, INK);
+    mesh.text(&audio_status(state), 86.0, 680.0, 1.20, MUTED);
     mesh.text(warning(state), (width - 240.0).max(18.0), 701.0, 1.25, CYAN);
 }
 
@@ -137,7 +157,7 @@ fn keyboard(mesh: &mut Mesh, input: &Status<'_>) {
             "{focus} / OCT {} / {instrument} / {} PENDING",
             input.octave, input.pending
         ),
-        18.0,
+        86.0,
         661.0,
         1.15,
         CYAN,

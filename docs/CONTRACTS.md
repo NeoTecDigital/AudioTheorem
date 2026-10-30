@@ -54,7 +54,7 @@ Main opens browser URL after binding; all normal native work remains on main OS 
   Analysis retains current evidence; waveform timestamps explicitly identify the chosen interval.
 
 ## Native-input / spatial-scene revision
-- The earlier native-keyboard revision used **v2**. The current ABI is **v3**, documented below.
+- The earlier native-keyboard revision used **v2**. The current ABI is **v4**, documented below.
   That earlier Upload was 88 bytes; Events was 1,584 bytes with a bounded 128-entry
   array of 12-byte `{scancode, down, modifiers}` records, `focused`, `input_reset`, and `key_count`.
   Focus loss/minimize/event overflow explicitly resets input; repeats do not emit note starts.
@@ -100,3 +100,22 @@ cannot erase engine-recorded history. These additions do not alter the JSON sche
   x/y and wheel delta). Focus loss/overflow resets capture; pointer data is copied before return.
 - Source cursor and output sample cannot be subtracted or treated as one continuous time axis.
   Pause/seek/mixing have independent semantics; no inferred time correspondence is published.
+
+## Indexed surface / artwork / native menu — ABI v4
+- Upload is136 bytes (64-bit ABI); appended surface vertex pointer/index pointer/counts at
+  offsets112/120/128/132. Events remains3,636 bytes. Both sides require version4 and exact size.
+- At most65,536 shared surface vertices and393,216 u32 indices; every index is checked before
+  copying, every coordinate/color must be finite, and index counts must be divisible by three.
+  Streams are borrowed only for draw; Nova copies them into fence-safe, fixed-capacity frame storage.
+- Positive vertex W=2 identifies a shaded surface (projection uses xyz with homogeneous W=1).
+  Negative W=-1 is untextured screen HUD; W=-2 is screen artwork with UV in color.xy.
+  Surface shading is visual only; source rows retain exact Hz and display-power heights.
+  Ordered, irregular rows use zipper triangulation, never a repeated/fabricated history row.
+  Missing source tiles, empty rows, and cleared output epochs are not connected.
+- Generic RGBA texture creation/upload/descriptors/lifetime live in Nova. The adapter decodes the
+  embedded PNG once using SDL2_image. Width/height<=4096 and exact RGBA byte counts are required;
+  original artwork is bundled at build time, no runtime filesystem route or workstation path.
+- Native menu hit targets and rendering share one definition. Engine values come from Snapshot;
+  pending engine changes disable replaceable menu actions. Instrument/octave are per-client input
+  preferences, never voice identities. Opening menu cancels a scrub without resuming playback;
+  focus loss closes it, note release survives it, Escape and the panic button silence independently.

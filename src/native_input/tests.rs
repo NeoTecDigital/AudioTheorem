@@ -167,9 +167,69 @@ fn escape_uses_independent_global_panic_and_drop_releases_native_client() {
     input.input(&[key(29, true)], true, false);
     pump(&mut engine, &mut input);
     drop(input);
-    for _ in 0..40 {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !engine.handle.snapshot.borrow().voices.is_empty() && Instant::now() < deadline {
         engine.tick_virtual(256);
-        std::thread::sleep(Duration::from_millis(1));
+        std::thread::sleep(Duration::from_millis(2));
     }
     assert!(engine.handle.snapshot.borrow().voices.is_empty());
+}
+
+#[test]
+fn native_menu_uses_acknowledged_commands_and_keeps_note_identity() {
+    let mut engine = crate::runtime::start(true).unwrap();
+    let mut input = Controller::new(engine.handle.clone());
+    input.input(&[key(29, true), key(43, true)], true, false);
+    pump(&mut engine, &mut input);
+    assert!(input.status().menu_open);
+    let state = (**engine.handle.snapshot.borrow()).clone();
+    input.choose(menu::Choice::Gain(0.05), &state);
+    assert_eq!(
+        engine.handle.snapshot.borrow().controls.gain,
+        state.controls.gain
+    );
+    input.choose(menu::Choice::Sound(1), &state);
+    input.choose(menu::Choice::Octave(1), &state);
+    input.input(&[key(29, false)], true, false);
+    pump(&mut engine, &mut input);
+    assert!(
+        (engine.handle.snapshot.borrow().controls.gain - state.controls.gain - 0.05).abs() < 1e-5
+    );
+    assert!(engine
+        .handle
+        .snapshot
+        .borrow()
+        .voices
+        .iter()
+        .all(|v| !v.held));
+    assert_eq!(input.status().instrument, 1);
+    assert_eq!(input.status().octave, 5);
+    input.input(&[], false, false);
+    assert!(!input.status().menu_open);
+}
+
+#[test]
+fn opening_menu_cancels_scrub_without_resuming() {
+    let engine = crate::runtime::start(true).unwrap();
+    let mut input = Controller::new(engine.handle.clone());
+    let mut state = (**engine.handle.snapshot.borrow()).clone();
+    state.asset = Some(7);
+    state.duration_seconds = 12.0;
+    state.playing = true;
+    input.timeline.sync(&state);
+    input.timeline.pointer(
+        timeline::PointerEvent {
+            kind: 1,
+            x: 0.5,
+            y: 1.0 - 130.0 / 720.0,
+            delta: 0.0,
+        },
+        &state,
+        1280.0,
+    );
+    assert!(input.timeline.inspecting());
+    input.input(&[key(43, true)], true, false);
+    assert!(input.menu.open);
+    assert!(!input.timeline.inspecting());
+    assert!(!input.pending.is_empty()); // queued pause, never auto-resume
 }

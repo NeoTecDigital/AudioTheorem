@@ -11,8 +11,8 @@ static uint32_t memory_type(Context& c, uint32_t bits) {
 }
 static void buffer(Context& c, Frame& frame) {
     VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    info.size = vertex_capacity * sizeof(Vertex) + stroke_capacity * sizeof(Stroke);
-    info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    info.size = geometry_bytes;
+    info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
     info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     check(vkCreateBuffer(c.device, &info, nullptr, &frame.vertices), "Nova vertex buffer");
     VkMemoryRequirements need{};
@@ -60,6 +60,7 @@ Context::~Context() {
         if (stroke_pipeline) vkDestroyPipeline(device, stroke_pipeline, nullptr);
         if (pipeline) vkDestroyPipeline(device, pipeline, nullptr);
         if (layout) vkDestroyPipelineLayout(device, layout, nullptr);
+        destroy_texture(*this);
         if (pass) vkDestroyRenderPass(device, pass, nullptr);
         vkDestroyDevice(device, nullptr);
     }

@@ -1,6 +1,8 @@
 #include "nova_visualizer.h"
 #include "../extern/Nova/Nova.h"
 #include "nova_shaders.h"
+#include "validation.h"
+#include "artwork.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -10,6 +12,9 @@
 
 static_assert(sizeof(NovaVertex) == sizeof(nova::Vertex));
 static_assert(offsetof(NovaUpload, transform) == 24);
+static_assert(offsetof(NovaUpload, surface) == 112);
+static_assert(offsetof(NovaUpload, indices) == 120);
+static_assert(offsetof(NovaUpload, surface_count) == 128);
 static_assert(sizeof(NovaEvents) == 3636);
 static_assert(sizeof(NovaKeyEvent) == 12);
 static_assert(offsetof(NovaEvents, keys) == 48);
@@ -40,20 +45,16 @@ void validate(const NovaUpload* frame) {
     }
     for (float value : frame->transform)
         if (!std::isfinite(value)) throw std::invalid_argument("Nova nonfinite transform");
-    for (uint32_t i = 0; i < frame->count; ++i) {
-        const auto& vertex = frame->vertices[i];
-        for (float value : vertex.position)
-            if (!std::isfinite(value)) throw std::invalid_argument("Nova nonfinite vertex");
-        for (float value : vertex.color)
-            if (!std::isfinite(value)) throw std::invalid_argument("Nova nonfinite color");
-    }
+    validate_vertices(frame->vertices, frame->count);
+    validate_surface(frame);
 }
 }
 extern "C" int32_t nova_create(uint32_t width, uint32_t height, void** output, char* error, size_t capacity) {
     if (!output) return failure(error, capacity, "Nova null output handle");
     *output = nullptr;
     try {
-        auto app = std::make_unique<Nova>(width, height, nova::Pipeline{nova_vertex_shader, nova_fragment_shader, nova_stroke_vertex_shader, nova_stroke_fragment_shader});
+        auto artwork = load_artwork();
+        auto app = std::make_unique<Nova>(width, height, nova::Pipeline{nova_vertex_shader, nova_fragment_shader, nova_stroke_vertex_shader, nova_stroke_fragment_shader}, image_view(*artwork));
         *output = app.release(); return 0;
     } catch (const std::exception& e) { return failure(error, capacity, e.what()); }
     catch (...) { return failure(error, capacity, "Nova initialization exception"); }
@@ -89,7 +90,8 @@ extern "C" int32_t nova_draw(void* handle, const NovaUpload* upload, char* error
         auto vertices = std::span(reinterpret_cast<const nova::Vertex*>(upload->vertices), upload->count);
         nova::Uniform uniform{}; std::memcpy(uniform.transform, upload->transform, sizeof(upload->transform));
         auto strokes = std::span(reinterpret_cast<const nova::Stroke*>(upload->strokes), upload->stroke_count);
-        return static_cast<Nova*>(handle)->draw(nova::Geometry{vertices, strokes, upload->hud_start}, uniform) ? 0 : 1;
+        return static_cast<Nova*>(handle)->draw(nova::Geometry{vertices, strokes, upload->hud_start,
+            std::span(upload->surface, upload->surface_count), std::span(upload->indices, upload->index_count)}, uniform) ? 0 : 1;
     } catch (const std::exception& e) { return failure(error, capacity, e.what()); }
     catch (...) { return failure(error, capacity, "Nova draw exception"); }
 }

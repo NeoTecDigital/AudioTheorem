@@ -13,7 +13,7 @@ void init_window(Context& c, uint32_t width, uint32_t height) {
         throw std::invalid_argument("Nova window dimensions");
     if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) throw std::runtime_error(SDL_GetError());
     c.sdl = true;
-    c.window = SDL_CreateWindow("HARMONIC / Nova", SDL_WINDOWPOS_CENTERED,
+    c.window = SDL_CreateWindow("AUDIO THEOREM / Nova", SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED, width, height,
         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!c.window) throw std::runtime_error(SDL_GetError());

@@ -1,6 +1,6 @@
 use super::{
     camera::Camera,
-    mesh::{Stroke, Vertex},
+    mesh::{Stroke, Surface, Vertex},
     scene::Scene,
 };
 use crate::{
@@ -15,6 +15,13 @@ use std::{
     rc::Rc,
 };
 
+pub(super) struct Geometry<'a> {
+    pub vertices: &'a [Vertex],
+    pub strokes: &'a [Stroke],
+    pub surface: &'a Surface,
+    pub hud_start: usize,
+}
+
 #[repr(C)]
 struct Upload {
     version: u32,
@@ -27,6 +34,10 @@ struct Upload {
     stroke_count: u32,
     stroke_stride: u32,
     hud_start: u32,
+    surface: *const Vertex,
+    indices: *const u32,
+    surface_count: u32,
+    index_count: u32,
 }
 
 #[repr(C)]
@@ -146,8 +157,7 @@ impl Visualizer {
             &input.status(),
             &input.timeline,
         );
-        let (vertices, strokes, hud_start) = self.scene.geometry();
-        draw(self.handle, vertices, strokes, hud_start, transform)?;
+        draw(self.handle, self.scene.geometry(), transform)?;
         self.scene.adjust_quality(start.elapsed());
         Ok(true)
     }
@@ -156,7 +166,7 @@ impl Visualizer {
 fn poll(handle: NonNull<c_void>) -> Result<Events, String> {
     let mut error = [0; 256];
     let mut events = Events {
-        version: 3,
+        version: 4,
         size: size_of::<Events>() as u32,
         // All fields are plain numeric C values; zero is valid.
         ..unsafe { std::mem::zeroed() }
@@ -175,23 +185,25 @@ fn poll(handle: NonNull<c_void>) -> Result<Events, String> {
 
 fn draw(
     handle: NonNull<c_void>,
-    vertices: &[Vertex],
-    strokes: &[Stroke],
-    hud_start: usize,
+    geometry: Geometry<'_>,
     transform: [f32; 16],
 ) -> Result<(), String> {
     let mut error = [0; 256];
     let upload = Upload {
-        version: 3,
+        version: 4,
         size: size_of::<Upload>() as u32,
-        vertices: vertices.as_ptr(),
-        count: vertices.len() as u32,
+        vertices: geometry.vertices.as_ptr(),
+        count: geometry.vertices.len() as u32,
         stride: size_of::<Vertex>() as u32,
         transform,
-        strokes: strokes.as_ptr(),
-        stroke_count: strokes.len() as u32,
+        strokes: geometry.strokes.as_ptr(),
+        stroke_count: geometry.strokes.len() as u32,
         stroke_stride: size_of::<Stroke>() as u32,
-        hud_start: hud_start as u32,
+        hud_start: geometry.hud_start as u32,
+        surface: geometry.surface.vertices.as_ptr(),
+        indices: geometry.surface.indices.as_ptr(),
+        surface_count: geometry.surface.vertices.len() as u32,
+        index_count: geometry.surface.indices.len() as u32,
     };
     let code = unsafe { nova_draw(handle.as_ptr(), &upload, error.as_mut_ptr(), error.len()) };
     result(code, &error)?;
@@ -212,8 +224,11 @@ mod tests {
     fn abi_layout_is_versioned() {
         assert_eq!(size_of::<Vertex>(), 32);
         assert_eq!(size_of::<Events>(), 3636);
-        assert_eq!(size_of::<Upload>(), 112);
+        assert_eq!(size_of::<Upload>(), 136);
         assert_eq!(std::mem::offset_of!(Upload, transform), 24);
+        assert_eq!(std::mem::offset_of!(Upload, surface), 112);
+        assert_eq!(std::mem::offset_of!(Upload, indices), 120);
+        assert_eq!(std::mem::offset_of!(Upload, surface_count), 128);
     }
 
     #[test]
@@ -224,8 +239,8 @@ mod tests {
         };
         assert!(validate(std::ptr::null(), &mut error) < 0);
         let mut frame = Upload {
-            version: 3,
-            size: 112,
+            version: 4,
+            size: 136,
             vertices: std::ptr::null(),
             count: 262145,
             stride: 32,
@@ -234,6 +249,10 @@ mod tests {
             stroke_count: 0,
             stroke_stride: 48,
             hud_start: 0,
+            surface: std::ptr::null(),
+            indices: std::ptr::null(),
+            surface_count: 0,
+            index_count: 0,
         };
         assert!(validate(&frame, &mut error) < 0);
         frame.count = 0;

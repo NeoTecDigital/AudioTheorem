@@ -1,0 +1,7 @@
+ABI rejection and failed-create tests passed
+Instanced stroke bounds, finite widths, HUD split and layout passed
+Indexed surface capacities, indices and finite values passed
+Keyboard ordering, repeats, overflow and focus-reset tests passed
+Partial texture initialization safely rejected and cleaned up
+Pointer order, normalization and overflow reset passed
+Native draw/minimize/restore/resize cycles passed

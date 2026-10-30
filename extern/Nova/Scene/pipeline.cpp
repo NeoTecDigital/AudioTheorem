@@ -89,6 +89,7 @@ PipelineState::PipelineState() {
 void init_pipeline(Context& c, Pipeline shaders) {
     VkPushConstantRange range{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Uniform)};
     VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    layout.setLayoutCount = 1; layout.pSetLayouts = &c.texture.layout;
     layout.pushConstantRangeCount = 1; layout.pPushConstantRanges = &range;
     check(vkCreatePipelineLayout(c.device, &layout, nullptr, &c.layout), "Nova pipeline layout");
     Stages stages(c); stages.init(shaders);

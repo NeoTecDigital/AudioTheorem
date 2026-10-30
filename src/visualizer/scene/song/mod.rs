@@ -4,7 +4,7 @@ use super::{spatial, waterfall};
 use crate::{
     contracts::*,
     native_input::timeline::Timeline,
-    visualizer::mesh::{Mesh, INK},
+    visualizer::mesh::{Mesh, Vertex, INK},
 };
 pub use overview::draw as hud;
 
@@ -19,43 +19,56 @@ pub fn draw(mesh: &mut Mesh, state: &Snapshot, timeline: &Timeline) {
     let count = end.saturating_sub(start).div_ceil(song.hop.max(1)) as usize;
     let visible = count.min(HISTORY_ROWS);
     let first = start / song.hop.max(1);
+    let mut previous = None;
     for i in 0..visible {
         let index = i * count.saturating_sub(1) / visible.saturating_sub(1).max(1);
         let sample = ((first + index as u64 + 1) * song.hop).min(song.frames);
-        if let Some(row) = song.row(sample) {
-            ridge(mesh, state, timeline, row, i % 12 == 0);
+        let current = song
+            .row(sample)
+            .and_then(|row| surface_row(mesh, state, timeline, row));
+        if let (Some((prior, range)), Some(next)) = (previous.take(), &current) {
+            if contiguous(song, prior, sample) {
+                mesh.surface.connect(range, next.clone());
+            }
         }
+        previous = current.map(|range| (sample, range));
     }
     playline(mesh, state, timeline);
 }
-fn ridge(mesh: &mut Mesh, state: &Snapshot, timeline: &Timeline, row: &SongRow, fill: bool) {
+fn contiguous(song: &SongIndex, a: u64, b: u64) -> bool {
+    let first = a.div_ceil(song.hop.max(1)).saturating_sub(1) as usize / SONG_TILE_ROWS;
+    let last = b.div_ceil(song.hop.max(1)).saturating_sub(1) as usize / SONG_TILE_ROWS;
+    (first..=last).all(|i| song.tiles.get(i).is_some_and(Option::is_some))
+}
+fn surface_row(
+    mesh: &mut Mesh,
+    state: &Snapshot,
+    timeline: &Timeline,
+    row: &SongRow,
+) -> Option<std::ops::Range<usize>> {
     let z = depth(row.spectrum.sample, state, timeline);
     if !(spatial::SHORE_Z - 9.0..=spatial::SHORE_Z + 9.0).contains(&z) {
-        return;
+        return None;
     }
     let future = row.spectrum.sample > state.playback_frame;
-    let color = if future {
-        [0.40, 0.55, 0.68, 0.28]
-    } else {
-        [0.40, 0.72, 0.74, 0.46]
-    };
-    let position = |p: &HistoryBand| {
-        [
-            spatial::spectrum_x(p.hz, state.device.sample_rate),
-            spatial::BASE_Y + spatial::height(p.power),
-            z,
-        ]
-    };
-    for pair in row.spectrum.bands.windows(2) {
-        let [a, b] = [position(&pair[0]), position(&pair[1])];
-        mesh.stroke(a, b, if future { 1.0 } else { 1.2 }, color);
-        if fill {
-            mesh.quad(
-                [a, b, [b[0], spatial::BASE_Y, z], [a[0], spatial::BASE_Y, z]],
-                [color[0], color[1], color[2], 0.025],
-            );
+    mesh.surface.row(row.spectrum.bands.iter().map(|p| {
+        let height = spatial::height(p.power);
+        let light = 0.28 + (height * 0.38).min(0.72);
+        let base = if future {
+            [0.28, 0.48, 0.68]
+        } else {
+            [0.18, 0.74, 0.70]
+        };
+        Vertex {
+            position: [
+                spatial::spectrum_x(p.hz, state.device.sample_rate),
+                spatial::BASE_Y + height,
+                z,
+                2.0,
+            ],
+            color: [base[0] * light, base[1] * light, base[2] * light, 0.94],
         }
-    }
+    }))
 }
 pub fn depth(frame: u64, state: &Snapshot, timeline: &Timeline) -> f32 {
     if timeline.fit {

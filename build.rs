@@ -44,6 +44,19 @@ fn embed_shaders(root: &Path, out: &Path) {
     fs::write(out.join("nova_shaders.h"), header).expect("Write embedded shaders");
 }
 
+fn embed_artwork(root: &Path, out: &Path) {
+    let path = root.join("assets/audio-theorem/icon.png");
+    println!("cargo:rerun-if-changed={}", path.display());
+    let bytes = fs::read(path).expect("Read packaged Audio Theorem logo");
+    let mut header =
+        String::from("#pragma once\ninline constexpr unsigned char nova_artwork[] = {");
+    for byte in bytes {
+        header.push_str(&format!("{byte},"));
+    }
+    header.push_str("};\n");
+    fs::write(out.join("nova_artwork.h"), header).expect("Embed logo");
+}
+
 fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_NATIVE");
     if env::var_os("CARGO_FEATURE_NATIVE").is_none() {
@@ -52,6 +65,7 @@ fn main() {
     let root = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     embed_shaders(&root, &out);
+    embed_artwork(&root, &out);
     let mut build = cc::Build::new();
     build
         .cpp(true)
@@ -66,6 +80,8 @@ fn main() {
         "Scene/pipeline.cpp",
         "Scene/buffers.cpp",
         "Scene/render.cpp",
+        "Scene/texture.cpp",
+        "Scene/texture_descriptors.cpp",
     ] {
         build.file(root.join("extern/Nova").join(source));
     }
@@ -78,10 +94,13 @@ fn main() {
         "extern/Nova/Nova.cpp",
         "nova_bridge/nova_visualizer.cpp",
         "nova_bridge/nova_visualizer.h",
+        "nova_bridge/validation.h",
+        "nova_bridge/artwork.h",
     ] {
         println!("cargo:rerun-if-changed={}", root.join(directory).display());
     }
     println!("cargo:rustc-link-lib=SDL2");
+    println!("cargo:rustc-link-lib=SDL2_image");
     println!("cargo:rustc-link-lib=vulkan");
     println!("cargo:rustc-link-lib=stdc++");
 }

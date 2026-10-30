@@ -1,5 +1,29 @@
 # Consolidated QA / release gates — 2026-10-29
 
+## Latest refinement — spectral mesh, original branding, native controls
+- **149 native /146 no-native Rust tests and9 browser tests pass.** Production Clippy, owned
+  Rust line limits, native `-Werror`, ABI-v4 bounds/layout/finite/index tests pass. No queue shim.
+- Native ASan/UBSan + Vulkan validation passed indexed draws, partial texture initialization,
+  resize/minimize/restore and input-boundary tests. Leak detection was disabled for the driver
+  process; this does not certify driver leak freedom.
+- Final dense source geometry CPU p95/p99: precise6731/7481us, immersive6408/6744us. Before caching
+  vertex depths, this mesh's sort cost produced13846/14882us precise; reusable depth scratch reduced
+  that cost without reducing measured history resolution. These are **CPU, not GPU timings**.
+-16-voice offline callback p99=493us against2666us half-deadline target at48kHz/256 frames;
+  allocation/deallocation and source/transport regressions pass. No audio DSP code changed here.
+-50-second native workflow launched from /tmp with embedded artwork/shaders and inspected both
+  modes plus a960x1080 menu layout. Engine-acknowledged gain/visibility/style, timeline, keyboard,
+  and panic checks pass. Targeted X11 synthetic pointers require the harness's SDL XInput2 override;
+  this is not a default-driver hardware-mouse certification. Temporary/stale debug captures omitted.
+- **Audio release gate remains failed:**837 ALSA underrun warnings and71 analysis drops in this
+  loaded-workstation run; callback max832us, CPAL errors0, overloads0. Do not equate zero CPAL errors
+  with zero underruns. Earlier runs also failed this gate. Isolated diagnosis,30-minute zero-underrun
+  soak, GPU/latency measurement and independent visual acceptance remain outstanding.
+- Source/projection/logical separation is unchanged; meshes interpolate geometry only and do not
+  bridge missing source tiles or output epochs. Logo bytes match the supplied asset exactly.
+- Evidence: `docs/qa-evidence/mesh-menu/`; implementation on local main only, no new push.
+
+
 ## Current revision — engine-recorded PCM and spectrum waterfalls
 -115 native-default Rust tests and112 no-native tests pass;9 browser tests pass. Three diagnostics
  are ignored in normal suites; the two new CPU diagnostics were run separately in release mode.

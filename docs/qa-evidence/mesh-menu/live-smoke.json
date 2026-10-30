@@ -1,0 +1,32 @@
+{
+  "device": {
+    "actual_buffer": 99,
+    "analysis_drops": 71,
+    "available": true,
+    "callback_max_us": 832,
+    "channels": 2,
+    "errors": 0,
+    "format": "f32",
+    "name": "default",
+    "requested_buffer": 256,
+    "sample_rate": 48000
+  },
+  "overloads": 0,
+  "epoch": 3,
+  "duration_seconds": 24.0,
+  "playback_frame": 936567,
+  "checks": [
+    "source before playback",
+    "native drag pause/seek/resume",
+    "asset identity",
+    "new output epoch",
+    "paused source / advancing engine",
+    "both modes",
+    "native keyboard / independent logical marks",
+    "native Escape panic",
+    "native menu gain acknowledgement",
+    "measured visibility toggle",
+    "menu presentation switching",
+    "narrow-window menu capture"
+  ]
+}

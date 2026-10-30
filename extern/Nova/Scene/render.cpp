@@ -18,10 +18,15 @@ static void record(Context& c, Frame& f, uint32_t image, Geometry geometry, cons
     vkCmdSetScissor(f.command, 0, 1, &scissor);
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(f.command, 0, 1, &f.vertices, &offset);
+    vkCmdBindDescriptorSets(f.command,VK_PIPELINE_BIND_POINT_GRAPHICS,c.layout,0,1,&c.texture.set,0,nullptr);
     vkCmdPushConstants(f.command, c.layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uniform), &uniform);
     vkCmdDraw(f.command, geometry.hud_start, 1, 0, 0);
+    offset = surface_offset;
+    vkCmdBindVertexBuffers(f.command, 0, 1, &f.vertices, &offset);
+    vkCmdBindIndexBuffer(f.command, f.vertices, index_offset, VK_INDEX_TYPE_UINT32);
+    vkCmdDrawIndexed(f.command, uint32_t(geometry.indices.size()), 1, 0, 0, 0);
     vkCmdBindPipeline(f.command, VK_PIPELINE_BIND_POINT_GRAPHICS, c.stroke_pipeline);
-    offset = vertex_capacity * sizeof(Vertex);
+    offset = stroke_offset;
     vkCmdBindVertexBuffers(f.command, 0, 1, &f.vertices, &offset);
     vkCmdDraw(f.command, 6, uint32_t(geometry.strokes.size()), 0, 0);
     vkCmdBindPipeline(f.command, VK_PIPELINE_BIND_POINT_GRAPHICS, c.pipeline);
@@ -46,6 +51,13 @@ static void submit(Context& c, Frame& f, uint32_t image) {
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) c.resized = true;
     else check(result, "Nova present");
 }
+static void upload(Frame& f, Geometry g) {
+    auto copy = [&](size_t offset, const auto& data) {
+        if (!data.empty()) std::memcpy(static_cast<char*>(f.mapped) + offset, data.data(), data.size_bytes());
+    };
+    copy(0, g.vertices); copy(stroke_offset, g.strokes);
+    copy(surface_offset, g.surface); copy(index_offset, g.indices);
+}
 bool draw(Context& c, Geometry geometry, const Uniform& uniform) {
     if (c.closed || c.minimized) return false;
     if (c.resized && !resize(c)) return false;
@@ -58,10 +70,7 @@ bool draw(Context& c, Geometry geometry, const Uniform& uniform) {
     if (acquired == VK_NOT_READY || acquired == VK_TIMEOUT) return false;
     if (acquired == VK_ERROR_OUT_OF_DATE_KHR) { c.resized = true; return false; }
     if (acquired != VK_SUBOPTIMAL_KHR) check(acquired, "Nova acquire");
-    const auto vertices = geometry.vertices;
-    if (vertices.size_bytes()) std::memcpy(f.mapped, vertices.data(), vertices.size_bytes());
-    auto* strokes = static_cast<char*>(f.mapped) + vertex_capacity * sizeof(Vertex);
-    if (geometry.strokes.size_bytes()) std::memcpy(strokes, geometry.strokes.data(), geometry.strokes.size_bytes());
+    upload(f, geometry);
     auto sized = uniform; sized.viewport[0] = float(c.present.extent.width); sized.viewport[1] = float(c.present.extent.height);
     record(c, f, image, geometry, sized);
     submit(c, f, image);

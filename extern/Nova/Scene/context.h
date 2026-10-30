@@ -1,5 +1,6 @@
 #pragma once
 #include "types.h"
+#include "texture.h"
 #include <SDL2/SDL.h>
 #include <vulkan/vulkan.h>
 #include <stdexcept>
@@ -44,6 +45,7 @@ struct Context {
     VkCommandPool pool = VK_NULL_HANDLE;
     std::array<Frame, 2> frames;
     Presentation present;
+    Texture texture;
     ~Context();
 };
 void check_thread(const Context&);
@@ -52,6 +54,7 @@ void init_device(Context&);
 void init_present(Context&);
 void init_pass(Context&);
 void init_pipeline(Context&, Pipeline);
+void init_texture(Context&, Image);
 void init_frames(Context&);
 void init_framebuffers(Context&);
 void destroy_present(Context&);

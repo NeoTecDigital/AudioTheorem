@@ -173,6 +173,7 @@ fn warm_streams(scene: &mut Scene, state: &mut Snapshot) {
 pub(super) fn svg(
     vertices: &[Vertex],
     strokes: &[crate::visualizer::mesh::Stroke],
+    surface: &crate::visualizer::mesh::Surface,
     transform: [f32; 16],
 ) -> String {
     let mut output = String::from("<svg xmlns='http://www.w3.org/2000/svg' width='1920' height='1080'><rect width='1920' height='1080' fill='#030507'/>");
@@ -184,6 +185,13 @@ pub(super) fn svg(
     {
         polygon(&mut output, triangle, transform);
     }
+    for indices in surface.indices.chunks_exact(3) {
+        let triangle = indices
+            .iter()
+            .map(|&i| surface.vertices[i as usize])
+            .collect::<Vec<_>>();
+        polygon(&mut output, &triangle, transform);
+    }
     for stroke in strokes {
         svg_stroke(&mut output, stroke, transform);
     }
@@ -191,11 +199,11 @@ pub(super) fn svg(
         .as_chunks::<3>()
         .0
         .iter()
-        .filter(|t| t[0].position[3] < 0.0)
+        .filter(|t| t[0].position[3] == -1.0)
     {
         polygon(&mut output, triangle, transform);
     }
-    output.push_str("<text x='1100' y='1068' fill='gray' font-size='10'>DETERMINISTIC GEOMETRY FIXTURE - SOFTWARE PREVIEW, NOT GPU VERIFICATION</text></svg>");
+    output.push_str("<text x='1100' y='1068' fill='gray' font-size='10'>DETERMINISTIC GEOMETRY FIXTURE - UNLIT PREVIEW WITHOUT TEXTURES, NOT GPU VERIFICATION</text></svg>");
     output
 }
 
@@ -219,8 +227,13 @@ fn polygon(output: &mut String, triangle: &[Vertex], transform: [f32; 16]) {
     let points = triangle
         .iter()
         .map(|vertex| {
-            let p = vertex.position;
-            let projected: [f32; 4] = if p[3] < 0.0 {
+            let p = [
+                vertex.position[0],
+                vertex.position[1],
+                vertex.position[2],
+                1.0,
+            ];
+            let projected: [f32; 4] = if vertex.position[3] < 0.0 {
                 [p[0], p[1], p[2], 1.0]
             } else {
                 std::array::from_fn(|row| {
@@ -273,6 +286,7 @@ fn both_modes_build_bounded_finite_identical_facts() {
                 svg(
                     &scene.mesh.vertices,
                     &scene.mesh.strokes,
+                    &scene.mesh.surface,
                     Camera.matrix(&snapshot.view, 1920, 1080),
                 ),
             )
@@ -332,5 +346,39 @@ fn geometry_cpu_budget() {
             times[228],
             times[237]
         );
+    }
+}
+
+#[test]
+fn branded_controls_overlay_is_bounded_and_keeps_logo_uvs_in_both_aspects() {
+    let state = snapshot();
+    let input = crate::native_input::Status {
+        menu_open: true,
+        octave: 4,
+        instrument: 0,
+        focused: true,
+        pending: 0,
+        error: None,
+    };
+    for size in [[1920, 1080], [960, 1080]] {
+        let mut scene = Scene::new();
+        scene.build_frame(&state, size[0], size[1], &input);
+        assert!(!scene.mesh.overflow && !scene.hud.overflow);
+        let logo = scene
+            .mesh
+            .vertices
+            .iter()
+            .filter(|v| v.position[3] == -2.0)
+            .collect::<Vec<_>>();
+        assert_eq!(logo.len(), 6);
+        assert!(logo
+            .iter()
+            .all(|v| v.color[..2].iter().all(|uv| (0.0..=1.0).contains(uv))));
+        assert!(scene
+            .mesh
+            .vertices
+            .iter()
+            .filter(|v| v.position[3] < 0.0)
+            .all(|v| v.position[0].abs() <= 1.001 && v.position[1].abs() <= 1.001));
     }
 }

@@ -414,3 +414,67 @@ Human review must distinguish logical/measured/projected facts and cadence witho
 - VCS: implementation is recorded on local main only. No new remote publication was requested for
   this phase; remote main/master/legacy-master are unchanged. The earlier completed publication and
   backup remain valid. Future work must not label this candidate as a certified audio release.
+
+## Approved refinement — spectrum mesh, Audio Theorem branding, native controls
+- User requests replacing spectrum-history lines with a mesh; additionally supplies AT2/assets
+  icon.png for the top-left logo and requests a proper native controls menu. Menu breadth was asked
+  asynchronously; mesh/logo implementation proceeds without waiting on that independent preference.
+- Frozen boundary: native ABI v4 adds bounded indexed surface geometry; generic indexed GPU support
+  stays in Nova. Music adapters stitch measured time/frequency samples without fabricating rows or
+  crossing missing source tiles/epochs. Original PCM and played/projected paths remain separate.
+- Logo is copied byte-for-byte into packaged assets, never loaded via an absolute workstation path
+  at runtime. Generic texture ownership/sampling belongs in Nova; brand layout stays in the adapter.
+- Single development phase followed by consolidated correctness/security/efficiency/code-quality
+  and native visual QA. No audio-engine redesign or remote publication is included in this refinement.
+
+### Mesh/menu implementation outcome and review
+- Delivered the original Audio Theorem PNG in the top-left native HUD; byte-identical SHA256
+  `95c7bbe35e519161929a2aaa5073dcfe3f5c4322e52bf7e75d6e37587461b9b3`. Native window is now
+  titled AUDIO THEOREM / Nova. Cargo embeds artwork/shaders; SDL2_image is an explicit native dependency.
+- Delivered a collapsible Controls menu (click or Tab): song play/pause, output gain, per-native-client
+  sound/octave, presentation, logical/measured/projected layers, roots/modes/cadence, reduced motion,
+  camera reset, analysis reset, panic. Deep synth controls and file import remain in the browser.
+  No answer to the optional breadth question arrived; no full duplicate synthesizer editor was added.
+- Delivered connected, shared-vertex spectral surfaces for live/output and indexed song history.
+  A dense source uses192x320 vertices, with a separate compact actual-output surface when a file is
+  loaded. Triangle stitching retains exact irregular Hz positions and does not cross missing tiles.
+  PCM, current spectral ridge, played markers and projected paths remain independent.
+- Efficiency review: fixed capacities65,536 vertices/393,216 indices, fence-safe GPU uploads,
+  reusable per-vertex depth scratch rather than repeated transform work in the sort comparator.
+  Texture upload/decoding happens once off the audio callback; no audio synthesis/state changes.
+- Security/correctness review: ABI-v4 size/offset/count/index/finite checks, texture extent/byte-count
+  checks, partial-initialization cleanup, no new filesystem/network routes, packaged trusted PNG.
+  Menu actions use acknowledged snapshots and bounded coordinator requests; replaceable actions are
+  disabled while pending. Focus loss/panic resets menu; menu opening cancels scrubbing without resume.
+- QA corrections: removed unused exports caught by Clippy. The old disconnect test's fixed40ms wait
+  could inspect a stale worker snapshot under load; it now waits for the actual condition with a
+  three-second failure bound. No production disconnect behavior was changed to satisfy the test.
+- Live-input harness correction: this workstation's Sway outputs start at global y1080, beyond part
+  of Xwayland's root geometry. Pointer warps/focus churn lost clicks; those failed attempts were NOT
+  accepted as verification. The final harness uses window-targeted X11 events with SDL XInput2
+  disabled for synthetic input, and waits for focus-reset processing. Production input is unchanged.
+- Native captures inspected in precise and immersive modes, controls open/closed, and960x1080 narrow
+  layout. Brand/artwork, active button state and field distinctions are visible. Some world geometry
+  crops at the narrow aspect; the menu/logo remain bounded. This is internal visual review, not
+  independent human comprehension acceptance or GPU timing certification.
+- Live50-second workflow from /tmp passed menu gain/visibility/presentation, source preview,
+  seek/pause/resume, native note identity, and panic checks. BUT the run logged837 ALSA underrun
+  warnings and71 analysis drops; callback max832us,48kHz/f32/stereo,256 requested/99 observed frames.
+  Zero-underrun release gate is FAILED/open, not waived. Workstation load was around24 on24 CPUs;
+  this observation is not proof of cause. No audio scheduling redesign is included in this UI change.
+- Remaining release action items: investigate underruns/analysis drops on an isolated reference run,
+  then rerun the30-minute soak; measure GPU p95/p99 and audio-to-visual latency; independent visual
+  acceptance. Changes are a locally usable UI candidate, not a certified instrument release.
+- Evidence: docs/qa-evidence/mesh-menu. Sanitized logs exclude session secrets. The opt-in live harness
+  needs Sway/Xwayland, xdotool, ImageMagick, Python websockets and python-xlib; app/core tests do not.
+- VCS: local main only for this refinement; no remote branch changes or new publication claimed.
+
+### Refinement exit metrics
+- Consolidated software QA:149 native Rust tests,146 no-native,9 browser, production Clippy,
+  owned500/50-line gates and C++ -Werror all pass. Native ASan/UBSan/Vulkan validation passes;
+  driver leak certification remains excluded (`detect_leaks=0`). Final locked release build passes.
+- Dense192x320 source scene CPU p95/p99: precise6731/7481us; immersive6408/6744us. Shared-depth
+  caching corrected the initial13.8ms p95 sort cost without decimating evidence. Offline16-voice
+  callback p99=493us. Neither metric substitutes for GPU timing or the failed live audio soak gate.
+- Expected UI deliverables achieved, with stated menu breadth. Hardware release certification is
+  intentionally still open with explicit failures/action items above, not reported as complete.

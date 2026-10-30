@@ -13,9 +13,12 @@ import time
 import urllib.request
 import wave
 import websockets
+import sys
+from native_pointer import Pointer
+POINTER = Pointer()
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / 'docs/qa-evidence/song-landscape'
+OUT = Path(os.environ.get('NOVA_QA_OUT', ROOT / 'docs/qa-evidence/song-landscape'))
 LOG = Path('/tmp/song-native-private.log')
 
 
@@ -65,8 +68,16 @@ async def command(ws, number, action, **args):
 
 
 def focus(window):
+    tree = json.loads(subprocess.check_output(['swaymsg', '-t', 'get_tree'], text=True))
+    def active(node):
+        if node.get('window') == int(window) and node.get('focused'):
+            return True
+        return any(active(child) for child in node.get('nodes', []) + node.get('floating_nodes', []))
+    if active(tree):
+        return
     subprocess.run(['swaymsg', f'[id={window}] focus'], check=True, stdout=subprocess.DEVNULL)
     subprocess.run(['xdotool', 'windowactivate', '--sync', window], check=True)
+    time.sleep(0.2)  # Let the safety focus-reset frame drain before injecting a new gesture.
 
 
 def coordinates(window, x, y):
@@ -80,10 +91,21 @@ def coordinates(window, x, y):
     return str(round(x/logical_width*width)), str(round((1-y/logical_height)*height))
 
 
-def click(window, x, y):
+def pointer(window, x, y):
     focus(window)
     px, py = coordinates(window, x, y)
-    subprocess.run(['xdotool', 'mousemove', '--window', window, px, py, 'click', '1'], check=True)
+    POINTER.move(window, px, py)
+
+
+def button(down):
+    POINTER.button(down)
+
+
+def click(window, x, y):
+    pointer(window, x, y)
+    button(True)
+    time.sleep(0.06)
+    button(False)
 
 
 def capture(window, name):
@@ -96,13 +118,12 @@ def capture(window, name):
 
 
 async def scrub(ws, window, fraction):
-    focus(window)
-    x, y = coordinates(window, 18 + fraction * (1280-36), 130)
-    subprocess.run(['xdotool', 'mousemove', '--window', window, str(x), str(y), 'mousedown', '1'], check=True)
+    pointer(window, 18 + fraction * (1280-36), 130)
+    button(True)
     paused = await settle(ws, 0.7)
     assert not paused['playing'], 'Drag must pause file only'
     capture(window, 'scrub-draft')
-    subprocess.run(['xdotool', 'mouseup', '1'], check=True)
+    button(False)
     state = await settle(ws, 0.7)
     assert state['playing'], 'Release must restore prior playing state'
     assert abs(state['playback_seconds']-fraction*24) < 2, {'position': state['playback_seconds'], 'expected': fraction*24}
@@ -112,7 +133,7 @@ async def scrub(ws, window, fraction):
 def native_window(pid):
     for _ in range(50):
         found = subprocess.run(['xdotool', 'search', '--all', '--onlyvisible', '--pid', str(pid),
-                                '--name', '^HARMONIC / Nova$'], capture_output=True, text=True)
+                                '--name', '^AUDIO THEOREM / Nova$'], capture_output=True, text=True)
         if found.returncode == 0 and found.stdout.strip():
             window = found.stdout.splitlines()[0]
             floated = subprocess.run(['swaymsg', f'[id={window}] floating enable, focus'], capture_output=True)
@@ -139,6 +160,9 @@ async def inspect(process, base, token, content):
         click(window, 130, 570)  # Pin C: tetrachord lens
         await settle(ws, 1)
         capture(window, 'source-before-play')
+        if os.environ.get('NOVA_QA_MENU'):
+            import native_menu_smoke
+            await native_menu_smoke.verify(sys.modules[__name__], ws, window)
         await command(ws, 1, 'playback', playing=True)
         before = await settle(ws, 2)
         after = await scrub(ws, window, 0.60)
@@ -164,6 +188,8 @@ async def inspect(process, base, token, content):
         report = {key: later[key] for key in ['device', 'overloads', 'epoch', 'duration_seconds', 'playback_frame']}
         report['checks'] = ['source before playback', 'native drag pause/seek/resume', 'asset identity',
                             'new output epoch', 'paused source / advancing engine', 'both modes', 'native keyboard / independent logical marks', 'native Escape panic']
+        if os.environ.get('NOVA_QA_MENU'):
+            report['checks'] += ['native menu gain acknowledgement', 'measured visibility toggle', 'menu presentation switching', 'narrow-window menu capture']
         (OUT/'live-smoke.json').write_text(json.dumps(report, indent=2)+'\n')
 
 
@@ -172,8 +198,8 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     content = recording()
     with LOG.open('w') as log:
-        process = subprocess.Popen([str(ROOT/'target/release/nova-daw'), '--no-browser', '--port', '0', '--seconds', '38'],
-                                   env={**os.environ, 'SDL_VIDEODRIVER': 'x11', 'NOVA_VALIDATION': '1'}, stdout=log, stderr=log)
+        process = subprocess.Popen([str(ROOT/'target/release/nova-daw'), '--no-browser', '--port', '0', '--seconds', '50' if os.environ.get('NOVA_QA_MENU') else '38'],
+                                   cwd='/tmp', env={**os.environ, 'SDL_VIDEODRIVER': 'x11', 'SDL_VIDEO_X11_XINPUT2': '0', 'NOVA_VALIDATION': '1'}, stdout=log, stderr=log)
         try:
             for _ in range(100):
                 match = re.search(r'(http://127\.0\.0\.1:\d+)/#token=(\w+)', LOG.read_text())
@@ -184,7 +210,7 @@ def main():
             asyncio.run(inspect(process, *match.groups(), content))
             assert process.wait(timeout=40) == 0
         finally:
-            subprocess.run(['xdotool', 'mouseup', '1'], check=False)
+            button(False)
             if process.poll() is None:
                 process.terminate()
                 process.wait(timeout=10)

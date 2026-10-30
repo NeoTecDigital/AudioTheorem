@@ -7,11 +7,13 @@ typedef nova::Vertex NovaVertex;
 typedef nova::Stroke NovaStroke;
 extern "C" {
 #endif
-#define NOVA_ABI_VERSION 3u
+#define NOVA_ABI_VERSION 4u
 #define NOVA_VERTEX_CAPACITY 262144u
 #define NOVA_KEY_CAPACITY 128u
 #define NOVA_STROKE_CAPACITY 100000u
 #define NOVA_POINTER_CAPACITY 128u
+#define NOVA_SURFACE_VERTICES 65536u
+#define NOVA_SURFACE_INDICES 393216u
 // Borrowed pointers valid only during a call; handles are main-thread affine.
 // Return 0 success, 1 draw skipped, negative error (message is UTF-8, NUL terminated).
 #ifndef __cplusplus
@@ -29,6 +31,9 @@ typedef struct {
     float transform[16];
     const NovaStroke* strokes;
     uint32_t stroke_count, stroke_stride, hud_start;
+    const NovaVertex* surface;
+    const uint32_t* indices;
+    uint32_t surface_count, index_count;
 } NovaUpload;
 typedef struct {
     uint32_t version, size, width, height, close, minimized;

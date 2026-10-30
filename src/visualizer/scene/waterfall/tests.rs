@@ -172,7 +172,7 @@ fn temporal_links_use_actual_overlapping_history_not_frequency_indices() {
 }
 
 #[test]
-fn changing_the_live_spectrum_never_rewrites_historical_ridges() {
+fn changing_the_live_spectrum_never_rewrites_historical_surface() {
     let history = data();
     let mut state = super::super::fixtures::snapshot();
     let mut a = Mesh::new();
@@ -181,7 +181,34 @@ fn changing_the_live_spectrum_never_rewrites_historical_ridges() {
     let mut b = Mesh::new();
     spectrum::row(&mut b, &state, &history, &history.spectrum[0]);
     assert_eq!(
-        a.strokes.iter().map(|v| (v.a, v.b)).collect::<Vec<_>>(),
-        b.strokes.iter().map(|v| (v.a, v.b)).collect::<Vec<_>>()
+        a.surface
+            .vertices
+            .iter()
+            .map(|v| (v.position, v.color))
+            .collect::<Vec<_>>(),
+        b.surface
+            .vertices
+            .iter()
+            .map(|v| (v.position, v.color))
+            .collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn live_surface_stitches_real_rows_and_skips_absent_rows() {
+    let mut history = data();
+    let mut next = history.spectrum[0].clone();
+    next.sample = 1600;
+    history.spectrum.push(next.clone());
+    let state = super::super::fixtures::snapshot();
+    let mut mesh = Mesh::new();
+    spectrum::draw(&mut mesh, &state, &history);
+    assert_eq!(mesh.surface.vertices.len(), 4);
+    assert_eq!(mesh.surface.indices.len(), 6);
+    next.sample = 1800;
+    history.spectrum.insert(1, SpectrumSlice::default());
+    history.spectrum.push(next);
+    mesh.clear();
+    spectrum::draw(&mut mesh, &state, &history);
+    assert_eq!(mesh.surface.indices.len(), 6); // only final consecutive valid pair
 }

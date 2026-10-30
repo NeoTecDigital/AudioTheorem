@@ -1,4 +1,5 @@
 #include "../nova_visualizer.h"
+#include "../../extern/Nova/Nova.h"
 #include "../../extern/Nova/Scene/input.h"
 #include <SDL2/SDL.h>
 #include <array>
@@ -42,9 +43,25 @@ static void stroke_boundary() {
     assert(nova_validate_upload(&u, error, sizeof(error)) < 0);
     u.stroke_count = 0; u.hud_start = 3;
     assert(nova_validate_upload(&u, error, sizeof(error)) < 0);
-    static_assert(sizeof(NovaUpload) == 112);
+    static_assert(sizeof(NovaUpload) == 136);
     static_assert(sizeof(NovaStroke) == 48);
     std::cout << "Instanced stroke bounds, finite widths, HUD split and layout passed\n";
+}
+static void surface_boundary() {
+    char error[256]{};
+    auto u=upload();
+    NovaVertex v{{0,0,0,2},{1,1,1,1}};
+    std::array<uint32_t,3> indices{0,0,0};
+    u.surface=&v; u.surface_count=1; u.indices=indices.data(); u.index_count=3;
+    assert(nova_validate_upload(&u,error,sizeof(error))==0);
+    indices[2]=1; assert(nova_validate_upload(&u,error,sizeof(error))<0);
+    indices[2]=0; v.position[0]=NAN; assert(nova_validate_upload(&u,error,sizeof(error))<0);
+    v.position[0]=0; u.index_count=2; assert(nova_validate_upload(&u,error,sizeof(error))<0);
+    u.index_count=NOVA_SURFACE_INDICES+3; assert(nova_validate_upload(&u,error,sizeof(error))<0);
+    u.index_count=3; u.indices=nullptr; assert(nova_validate_upload(&u,error,sizeof(error))<0);
+    u.indices=indices.data(); u.surface_count=NOVA_SURFACE_VERTICES+1;
+    assert(nova_validate_upload(&u,error,sizeof(error))<0);
+    std::cout << "Indexed surface capacities, indices and finite values passed\n";
 }
 static void pointers(void* handle) {
     char error[256]{};
@@ -70,6 +87,13 @@ static void cycle_events(int frame) {
     if (frame == 60) window_event(SDL_WINDOWEVENT_SIZE_CHANGED);
     if (frame == 80) window_event(SDL_WINDOWEVENT_SIZE_CHANGED);
 }
+static void partial_texture_failure() {
+    bool failed=false;
+    try { Nova app(640,480,{{},{},{},{}},{0,1,{}}); }
+    catch (const std::invalid_argument&) { failed=true; }
+    assert(failed);
+    std::cout << "Partial texture initialization safely rejected and cleaned up\n";
+}
 static void window() {
     char error[256]{};
     void* handle = nullptr;
@@ -83,6 +107,9 @@ static void window() {
     auto u = upload(); u.count = 3; u.hud_start = 3; u.vertices = triangle.data();
     NovaStroke stroke{{-0.8f,-0.7f,0,1.5f},{0.8f,0.7f,0,1},{0.2f,0.9f,1,0.8f}};
     u.strokes = &stroke; u.stroke_count = 1;
+    std::array<uint32_t,3> indices{0,1,2};
+    auto surface=triangle; for (auto& v:surface) v.position[3]=2;
+    u.surface=surface.data(); u.surface_count=3; u.indices=indices.data(); u.index_count=3;
     for (int i = 0; i < 120; ++i) {
         cycle_events(i);
         NovaEvents events{}; events.version = NOVA_ABI_VERSION; events.size = sizeof(events);
@@ -111,6 +138,7 @@ static void keyboard() {
 int main(int argc, char** argv) {
     boundary();
     stroke_boundary();
+    surface_boundary();
     keyboard();
-    if (argc > 1 && std::strcmp(argv[1], "--window") == 0) window();
+    if (argc > 1 && std::strcmp(argv[1], "--window") == 0) { partial_texture_failure(); window(); }
 }

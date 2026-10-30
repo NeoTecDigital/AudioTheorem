@@ -11,7 +11,7 @@ and full end-to-end browser acceptance remain separate from the automated/softwa
 
 ## Build and launch on a Linux desktop
 
-Requirements: Rust/Cargo, C++20 compiler, SDL2/Vulkan/ALSA development libraries, `glslc`,
+Requirements: Rust/Cargo, C++20 compiler, SDL2/SDL2_image/Vulkan/ALSA development libraries, `glslc`,
 Vulkan driver, and an audio output device. First resolve the pinned Cargo dependencies.
 
 ```sh
@@ -103,3 +103,13 @@ underruns, GPU timing, or visual acceptance from it. Full remaining gates are in
 The previous AudioTheorem application's history and its **Ancillary** license notice are preserved;
 this source migration does not grant new rights. Vendored notices remain with their sources.
 See [migration details](docs/MIGRATION.md) and the `legacy-master` branch for the prior application.
+
+### Native controls and spectral surface
+- The supplied Audio Theorem logo is packaged in the binary and shown in Nova's top-left.
+- Click **Controls** or press **Tab** for playback, output level, native sound/octave,
+  presentation/layers/overlays, reduced motion, camera reset, analysis reset, and panic.
+  Values reflect engine acknowledgements; Escape remains an immediate panic, not menu dismissal.
+  Click outside or press Tab to dismiss. Detailed synthesis and WAV/FLAC import stay in the browser.
+- Spectrum history is a shaded time × frequency mesh. Height is measured spectral power;
+  triangles interpolate display geometry only. Missing indexed tiles/analysis epochs are not joined.
+  Source-song preview remains pre-gain and separate from actual output PCM and played notes.
